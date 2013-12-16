@@ -54,6 +54,12 @@ class quiz_statistics_report extends quiz_default_report {
 
         $this->context = context_module::instance($cm->id);
 
+        if (!quiz_questions_in_quiz($quiz->questions)) {
+            $this->print_header_and_tabs($cm, $course, $quiz, 'statistics');
+            echo quiz_no_questions_message($quiz, $cm, $this->context);
+            return true;
+        }
+
         // Work out the display options.
         $download = optional_param('download', '', PARAM_ALPHA);
         $everything = optional_param('everything', 0, PARAM_BOOL);
@@ -151,9 +157,7 @@ class quiz_statistics_report extends quiz_default_report {
                 }
             }
 
-            if (!quiz_questions_in_quiz($quiz->questions)) {
-                echo quiz_no_questions_message($quiz, $cm, $this->context);
-            } else if (!$this->table->is_downloading() && $quizstats->s() == 0) {
+            if (!$this->table->is_downloading() && $quizstats->s() == 0) {
                 echo $OUTPUT->notification(get_string('noattempts', 'quiz'));
             }
 
@@ -229,13 +233,13 @@ class quiz_statistics_report extends quiz_default_report {
 
         } else {
             // On-screen display of overview report.
-            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_statistics'));
+            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_statistics'), 3);
             echo $this->output_caching_info($quizstats, $quiz->id, $groupstudents, $whichattempts, $reporturl);
             echo $this->everything_download_options();
             $quizinfo = $quizstats->get_formatted_quiz_info_data($course, $cm, $quiz);
             echo $this->output_quiz_info_table($quizinfo);
             if ($quizstats->s()) {
-                echo $OUTPUT->heading(get_string('quizstructureanalysis', 'quiz_statistics'));
+                echo $OUTPUT->heading(get_string('quizstructureanalysis', 'quiz_statistics'), 3);
                 $this->output_quiz_structure_analysis_table($quizstats->s(), $questionstats, $subquestionstats);
                 $this->output_statistics_graph($quiz->id, $currentgroup, $whichattempts);
             }
@@ -301,10 +305,10 @@ class quiz_statistics_report extends quiz_default_report {
         }
 
         // Display the various bits.
-        echo $OUTPUT->heading(get_string('questioninformation', 'quiz_statistics'));
+        echo $OUTPUT->heading(get_string('questioninformation', 'quiz_statistics'), 3);
         echo html_writer::table($questioninfotable);
         echo $this->render_question_text($questionstat->question);
-        echo $OUTPUT->heading(get_string('questionstatistics', 'quiz_statistics'));
+        echo $OUTPUT->heading(get_string('questionstatistics', 'quiz_statistics'), 3);
         echo html_writer::table($questionstatstable);
     }
 
@@ -343,7 +347,7 @@ class quiz_statistics_report extends quiz_default_report {
         $qtable->export_class_instance($exportclass);
         if (!$this->table->is_downloading()) {
             // Output an appropriate title.
-            echo $OUTPUT->heading(get_string('analysisofresponses', 'quiz_statistics'));
+            echo $OUTPUT->heading(get_string('analysisofresponses', 'quiz_statistics'), 3);
 
         } else {
             // Work out an appropriate title.
@@ -443,7 +447,7 @@ class quiz_statistics_report extends quiz_default_report {
 
         // XHTML download is a special case.
         if ($this->table->is_downloading() == 'xhtml') {
-            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_statistics'));
+            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_statistics'), 3);
             echo $this->output_quiz_info_table($quizinfo);
             return;
         }

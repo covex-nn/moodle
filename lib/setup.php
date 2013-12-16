@@ -217,6 +217,22 @@ if (!defined('PHPUNIT_TEST')) {
     define('PHPUNIT_TEST', false);
 }
 
+// Performance tests needs to always display performance info, even in redirections.
+if (!defined('MDL_PERF_TEST')) {
+    define('MDL_PERF_TEST', false);
+} else {
+    // We force the ones we need.
+    if (!defined('MDL_PERF')) {
+        define('MDL_PERF', true);
+    }
+    if (!defined('MDL_PERFDB')) {
+        define('MDL_PERFDB', true);
+    }
+    if (!defined('MDL_PERFTOFOOT')) {
+        define('MDL_PERFTOFOOT', true);
+    }
+}
+
 // When set to true MUC (Moodle caching) will be disabled as much as possible.
 // A special cache factory will be used to handle this situation and will use special "disabled" equivalents objects.
 // This ensure we don't attempt to read or create the config file, don't use stores, don't provide persistence or
@@ -766,6 +782,11 @@ if (!PHPUNIT_TEST and !defined('BEHAT_TEST')) {
     $USER    =& $_SESSION['USER'];
 }
 
+// Initialise some variables that are supposed to be set in config.php only.
+if (!isset($CFG->filelifetime)) {
+    $CFG->filelifetime = 60*60*6;
+}
+
 // Late profiling, only happening if early one wasn't started
 if (!empty($CFG->profilingenabled)) {
     require_once($CFG->libdir . '/xhprof/xhprof_moodle.php');
@@ -794,7 +815,7 @@ unset($urlthemename);
 
 // Ensure a valid theme is set.
 if (!isset($CFG->theme)) {
-    $CFG->theme = 'standardwhite';
+    $CFG->theme = 'standard';
 }
 
 // Set language/locale of printed times.  If user has chosen a language that
@@ -838,7 +859,7 @@ unset($classname);
 
 
 if (!empty($CFG->debugvalidators) and !empty($CFG->guestloginbutton)) {
-    if ($CFG->theme == 'standard' or $CFG->theme == 'standardwhite') {    // Temporary measure to help with XHTML validation
+    if ($CFG->theme == 'standard') {    // Temporary measure to help with XHTML validation
         if (isset($_SERVER['HTTP_USER_AGENT']) and empty($USER->id)) {      // Allow W3CValidator in as user called w3cvalidator (or guest)
             if ((strpos($_SERVER['HTTP_USER_AGENT'], 'W3C_Validator') !== false) or
                 (strpos($_SERVER['HTTP_USER_AGENT'], 'Cynthia') !== false )) {

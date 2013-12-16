@@ -279,10 +279,6 @@ Console.prototype = {
         if (!listing) {
             return false;
         }
-        if (!category) {
-            Y.log('Couldn\'t find the current category object.', 'warn', 'moodle-course-management');
-            return false;
-        }
         listing.all('.listitem[data-id]').each(function(node){
             this.registerCourse(new Course({
                 node : node,
@@ -421,6 +417,11 @@ Console.prototype = {
         args.action = action;
         args.ajax = '1';
         args.sesskey = M.cfg.sesskey;
+        if (callback === null) {
+            callback = function() {
+                Y.log("'Action '"+action+"' completed", 'debug', 'moodle-course-management');
+            };
+        }
         io.send(this.get('ajaxurl'), {
             method : 'POST',
             on : {

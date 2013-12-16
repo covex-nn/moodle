@@ -33,7 +33,12 @@ defined('MOODLE_INTERNAL') || die();
  * @return texteditor object
  */
 function editors_get_preferred_editor($format = NULL) {
-    global $USER;
+    global $USER, $CFG;
+
+    if (!empty($CFG->adminsetuppending)) {
+        // Must not use other editors before install completed!
+        return get_texteditor('textarea');
+    }
 
     $enabled = editors_get_enabled();
 
@@ -90,7 +95,7 @@ function editors_get_enabled() {
     global $CFG;
 
     if (empty($CFG->texteditors)) {
-        $CFG->texteditors = 'tinymce,atto,textarea';
+        $CFG->texteditors = 'tinymce,textarea';
     }
     $active = array();
     foreach(explode(',', $CFG->texteditors) as $e) {
@@ -148,7 +153,7 @@ function editors_head_setup() {
     global $CFG;
 
     if (empty($CFG->texteditors)) {
-        $CFG->texteditors = 'tinymce,atto,textarea';
+        $CFG->texteditors = 'tinymce,textarea';
     }
     $active = explode(',', $CFG->texteditors);
 

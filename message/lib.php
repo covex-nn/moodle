@@ -378,6 +378,17 @@ function message_get_contacts($user1=null, $user2=null) {
     }
     $rs->close();
 
+    // Add noreply user and support user to the list.
+    $supportuser = core_user::get_support_user();
+    $supportuser->messagecount = message_count_unread_messages($USER, $supportuser);
+    if ($supportuser->messagecount > 0) {
+        $strangers[] = $supportuser;
+    }
+    $noreplyuser = core_user::get_noreply_user();
+    $noreplyuser->messagecount = message_count_unread_messages($USER, $noreplyuser);
+    if ($noreplyuser->messagecount > 0) {
+        $strangers[] = $noreplyuser;
+    }
     return array($onlinecontacts, $offlinecontacts, $strangers);
 }
 
@@ -699,7 +710,7 @@ function message_get_recent_conversations($user, $limitfrom=0, $limitto=100) {
 
     //There is a separate query for read and unread queries as they are stored in different tables
     //They were originally retrieved in one query but it was so large that it was difficult to be confident in its correctness
-    $sql = "SELECT $userfields, mr.id as mid, mr.smallmessage, mr.fullmessage, mr.timecreated, mc.id as contactlistid, mc.blocked
+    $sql = "SELECT $userfields, mr.id as mid, mr.notification, mr.smallmessage, mr.fullmessage, mr.fullmessagehtml, mr.fullmessageformat, mr.timecreated, mc.id as contactlistid, mc.blocked
               FROM {message_read} mr
               JOIN (
                     SELECT messages.userid AS userid, MAX(messages.mid) AS mid
@@ -725,7 +736,7 @@ function message_get_recent_conversations($user, $limitfrom=0, $limitto=100) {
     $params = array('userid1' => $user->id, 'userid2' => $user->id, 'userid3' => $user->id);
     $read =  $DB->get_records_sql($sql, $params, $limitfrom, $limitto);
 
-    $sql = "SELECT $userfields, m.id as mid, m.smallmessage, m.fullmessage, m.timecreated, mc.id as contactlistid, mc.blocked
+    $sql = "SELECT $userfields, m.id as mid, m.notification, m.smallmessage, m.fullmessage, m.fullmessagehtml, m.fullmessageformat, m.timecreated, mc.id as contactlistid, mc.blocked
               FROM {message} m
               JOIN (
                     SELECT messages.userid AS userid, MAX(messages.mid) AS mid
@@ -784,7 +795,7 @@ function message_get_recent_notifications($user, $limitfrom=0, $limitto=100) {
     global $DB;
 
     $userfields = user_picture::fields('u', array('lastaccess'));
-    $sql = "SELECT mr.id AS message_read_id, $userfields, mr.smallmessage, mr.fullmessage, mr.timecreated as timecreated, mr.contexturl, mr.contexturlname
+    $sql = "SELECT mr.id AS message_read_id, $userfields, mr.notification, mr.smallmessage, mr.fullmessage, mr.fullmessagehtml, mr.fullmessageformat, mr.timecreated as timecreated, mr.contexturl, mr.contexturlname
               FROM {message_read} mr
                    JOIN {user} u ON u.id=mr.useridfrom
              WHERE mr.useridto = :userid1 AND u.deleted = '0' AND mr.notification = :notification
@@ -850,11 +861,14 @@ function message_print_recent_notifications($user=null) {
 /**
  * Print a list of recent messages
  *
+ * @access private
+ *
  * @param array $messages the messages to display
- * @param object $user the current user
+ * @param stdClass $user the current user
  * @param bool $showotheruser display information on the other user?
  * @param bool $showicontext show text next to the action icons?
  * @param bool $forcetexttohtml Force text to go through @see text_to_html() via @see format_text()
+ * @param bool $showactionlinks
  * @return void
  */
 function message_print_recent_messages_table($messages, $user = null, $showotheruser = true, $showicontext = false, $forcetexttohtml = false, $showactionlinks = true) {
@@ -912,19 +926,66 @@ function message_print_recent_messages_table($messages, $user = null, $showother
             }
             echo html_writer::end_tag('span');//end otheruser
         }
-        $messagetoprint = null;
-        if (!empty($message->smallmessage)) {
-            $messagetoprint = $message->smallmessage;
-        } else {
-            $messagetoprint = $message->fullmessage;
-        }
+
+        $messagetext = message_format_message_text($message, $forcetexttohtml);
 
         echo html_writer::tag('span', userdate($message->timecreated, $dateformat), array('class' => 'messagedate'));
-        echo html_writer::tag('span', format_text($messagetoprint, $forcetexttohtml?FORMAT_MOODLE:FORMAT_HTML), array('class' => 'themessage'));
+        echo html_writer::tag('span', $messagetext, array('class' => 'themessage'));
         echo message_format_contexturl($message);
         echo html_writer::end_tag('div');//end singlemessage
     }
     echo html_writer::end_tag('div');//end messagerecent
+}
+
+/**
+ * Try to guess how to convert the message to html.
+ *
+ * @access private
+ *
+ * @param stdClass $message
+ * @param bool $forcetexttohtml
+ * @return string html fragment
+ */
+function message_format_message_text($message, $forcetexttohtml = false) {
+    // Note: this is a very nasty hack that tries to work around the weird messaging rules and design.
+
+    $options = new stdClass();
+    $options->para = false;
+
+    $format = $message->fullmessageformat;
+
+    if ($message->smallmessage !== '') {
+        if ($message->notification == 1) {
+            if ($message->fullmessagehtml !== '' or $message->fullmessage !== '') {
+                $format = FORMAT_PLAIN;
+            }
+        }
+        $messagetext = $message->smallmessage;
+
+    } else if ($message->fullmessageformat == FORMAT_HTML) {
+        if ($message->fullmessagehtml !== '') {
+            $messagetext = $message->fullmessagehtml;
+        } else {
+            $messagetext = $message->fullmessage;
+            $format = FORMAT_MOODLE;
+        }
+
+    } else {
+        if ($message->fullmessage !== '') {
+            $messagetext = $message->fullmessage;
+        } else {
+            $messagetext = $message->fullmessagehtml;
+            $format = FORMAT_HTML;
+        }
+    }
+
+    if ($forcetexttohtml) {
+        // This is a crazy hack, why not set proper format when creating the notifications?
+        if ($format === FORMAT_PLAIN) {
+            $format = FORMAT_MOODLE;
+        }
+    }
+    return format_text($messagetext, $format, $options);
 }
 
 /**
@@ -1891,7 +1952,12 @@ function message_print_message_history($user1, $user2 ,$search = '', $messagelim
     echo html_writer::end_tag('td');
 
     echo html_writer::start_tag('td', array('align' => 'center', 'id' => 'user2'));
-    echo $OUTPUT->user_picture($user2, array('size' => 100, 'courseid' => SITEID));
+    // Show user picture with link is real user else without link.
+    if (core_user::is_real_user($user2->id)) {
+        echo $OUTPUT->user_picture($user2, array('size' => 100, 'courseid' => SITEID));
+    } else {
+        echo $OUTPUT->user_picture($user2, array('size' => 100, 'courseid' => SITEID, 'link' => false));
+    }
     echo html_writer::tag('div', fullname($user2), array('class' => 'heading'));
 
     if ($showactionlinks && isset($user2->iscontact) && isset($user2->isblocked)) {
@@ -1983,27 +2049,16 @@ function message_format_message($message, $format='', $keywords='', $class='othe
         }
     }
     $time = userdate($message->timecreated, $dateformat);
-    $options = new stdClass();
-    $options->para = false;
 
-    //if supplied display small messages as fullmessage may contain boilerplate text that shouldnt appear in the messaging UI
-    if (!empty($message->smallmessage)) {
-        $messagetext = $message->smallmessage;
-    } else {
-        $messagetext = $message->fullmessage;
-    }
-    if ($message->fullmessageformat == FORMAT_HTML) {
-        //dont escape html tags by calling s() if html format or they will display in the UI
-        $messagetext = html_to_text(format_text($messagetext, $message->fullmessageformat, $options));
-    } else {
-        $messagetext = format_text(s($messagetext), $message->fullmessageformat, $options);
-    }
-
-    $messagetext .= message_format_contexturl($message);
+    $messagetext = message_format_message_text($message, false);
 
     if ($keywords) {
         $messagetext = highlight($keywords, $messagetext);
     }
+
+    $messagetext .= message_format_contexturl($message);
+
+    $messagetext = clean_text($messagetext, FORMAT_HTML);
 
     return <<<TEMPLATE
 <div class='message $class'>
@@ -2117,8 +2172,11 @@ function message_print_contactlist_user($contact, $incontactlist = true, $isbloc
     $strcontact = $strblock = $strhistory = null;
 
     if ($showactionlinks) {
-        $strcontact = message_get_contact_add_remove_link($incontactlist, $isblocked, $contact);
-        $strblock   = message_get_contact_block_link($incontactlist, $isblocked, $contact);
+        // Show block and delete links if user is real user.
+        if (core_user::is_real_user($contact->id)) {
+            $strcontact = message_get_contact_add_remove_link($incontactlist, $isblocked, $contact);
+            $strblock   = message_get_contact_block_link($incontactlist, $isblocked, $contact);
+        }
         $strhistory = message_history_link($USER->id, $contact->id, true, '', '', 'icon');
     }
 

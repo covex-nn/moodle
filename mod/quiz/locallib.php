@@ -199,7 +199,8 @@ function quiz_start_new_attempt($quizobj, $quba, $attempt, $attemptnumber, $time
     } else {
         $variantoffset = $attemptnumber;
     }
-    $variantstrategy = new question_variant_pseudorandom_no_repeats_strategy($variantoffset);
+    $variantstrategy = new question_variant_pseudorandom_no_repeats_strategy(
+            $variantoffset, $attempt->userid, $quizobj->get_quizid());
 
     if (!empty($forcedvariantsbyslot)) {
         $forcedvariantsbyseed = question_variant_forced_choices_selection_strategy::prepare_forced_choices_array(
@@ -1513,7 +1514,7 @@ function quiz_send_confirmation($recipient, $a) {
     $eventdata->name              = 'confirmation';
     $eventdata->notification      = 1;
 
-    $eventdata->userfrom          = get_admin();
+    $eventdata->userfrom          = core_user::get_noreply_user();
     $eventdata->userto            = $recipient;
     $eventdata->subject           = get_string('emailconfirmsubject', 'quiz', $a);
     $eventdata->fullmessage       = get_string('emailconfirmbody', 'quiz', $a);
@@ -1594,8 +1595,8 @@ function quiz_send_notification_messages($course, $quiz, $attempt, $context, $cm
     }
 
     // Check for notifications required.
-    $notifyfields = 'u.id, u.username, u.firstname, u.lastname, u.idnumber, u.email, u.emailstop, ' .
-            'u.lang, u.timezone, u.mailformat, u.maildisplay';
+    $notifyfields = 'u.id, u.username, u.idnumber, u.email, u.emailstop, u.lang, u.timezone, u.mailformat, u.maildisplay, ';
+    $notifyfields .= get_all_user_name_fields(true, 'u');
     $groups = groups_get_all_groups($course->id, $submitter->id);
     if (is_array($groups) && count($groups) > 0) {
         $groups = array_keys($groups);
@@ -1717,7 +1718,7 @@ function quiz_send_overdue_message($course, $quiz, $attempt, $context, $cm) {
     $eventdata->name              = 'attempt_overdue';
     $eventdata->notification      = 1;
 
-    $eventdata->userfrom          = get_admin();
+    $eventdata->userfrom          = core_user::get_noreply_user();
     $eventdata->userto            = $submitter;
     $eventdata->subject           = get_string('emailoverduesubject', 'quiz', $a);
     $eventdata->fullmessage       = get_string('emailoverduebody', 'quiz', $a);
