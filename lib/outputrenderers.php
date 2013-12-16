@@ -468,9 +468,20 @@ class core_renderer extends renderer_base {
 
         $output = '';
         if (isset($CFG->maintenance_later) and $CFG->maintenance_later > time()) {
-            $output .= $this->box_start('errorbox maintenancewarning');
-            $output .= get_string('maintenancemodeisscheduled', 'admin', (int)(($CFG->maintenance_later-time())/60));
+            $timeleft = $CFG->maintenance_later - time();
+            // If timeleft less than 30 sec, set the class on block to error to highlight.
+            $errorclass = ($timeleft < 30) ? 'error' : 'warning';
+            $output .= $this->box_start($errorclass . ' moodle-has-zindex maintenancewarning');
+            $a = new stdClass();
+            $a->min = (int)($timeleft/60);
+            $a->sec = (int)($timeleft % 60);
+            $output .= get_string('maintenancemodeisscheduled', 'admin', $a) ;
             $output .= $this->box_end();
+            $this->page->requires->yui_module('moodle-core-maintenancemodetimer', 'M.core.maintenancemodetimer',
+                    array(array('timeleftinsec' => $timeleft)));
+            $this->page->requires->strings_for_js(
+                    array('maintenancemodeisscheduled', 'sitemaintenance'),
+                    'admin');
         }
         return $output;
     }
@@ -1088,24 +1099,20 @@ class core_renderer extends renderer_base {
         foreach ($menu->get_primary_actions($this) as $action) {
             if ($action instanceof renderable) {
                 $content = $this->render($action);
-                $role = 'presentation';
             } else {
                 $content = $action;
-                $role = 'menuitem';
             }
-            $output .= html_writer::tag('li', $content, array('role' => $role));
+            $output .= html_writer::tag('li', $content, array('role' => 'presentation'));
         }
         $output .= html_writer::end_tag('ul');
         $output .= html_writer::start_tag('ul', $menu->attributessecondary);
         foreach ($menu->get_secondary_actions() as $action) {
             if ($action instanceof renderable) {
                 $content = $this->render($action);
-                $role = 'presentation';
             } else {
                 $content = $action;
-                $role = 'menuitem';
             }
-            $output .= html_writer::tag('li', $content, array('role' => $role));
+            $output .= html_writer::tag('li', $content, array('role' => 'presentation'));
         }
         $output .= html_writer::end_tag('ul');
         $output .= html_writer::end_tag('div');
@@ -1392,7 +1399,6 @@ class core_renderer extends renderer_base {
      * @return string the HTML to be output.
      */
     public function blocks_for_region($region) {
-        $region = $this->page->apply_theme_region_manipulations($region);
         $blockcontents = $this->page->blocks->get_content_for_region($region, $this);
         $blocks = $this->page->blocks->get_blocks_for_region($region);
         $lastblock = null;
@@ -3225,8 +3231,8 @@ EOD;
             'data-blockregion' => $displayregion,
             'data-droptarget' => '1'
         );
-        if ($this->page->blocks->region_has_content($region, $this)) {
-            $content = $this->blocks_for_region($region);
+        if ($this->page->blocks->region_has_content($displayregion, $this)) {
+            $content = $this->blocks_for_region($displayregion);
         } else {
             $content = '';
         }

@@ -710,6 +710,9 @@ $string['errorcreatingactivity'] = 'Unable to create an instance of activity \'{
 $string['errorfiletoobig'] = 'The file was bigger than the limit of {$a} bytes';
 $string['errornouploadrepo'] = 'There is no upload repository enabled for this site';
 $string['errorwhenconfirming'] = 'You are not confirmed yet because an error occurred.  If you clicked on a link in an email to get here, make sure that the line in your email wasn\'t broken or wrapped. You may have to use cut and paste to reconstruct the link properly.';
+$string['eventcommentcreated'] = 'Comment created';
+$string['eventcommentdeleted'] = 'Comment deleted';
+$string['eventcommentsviewed'] = 'Comments viewed';
 $string['eventcoursecategorydeleted'] = 'Category deleted';
 $string['eventcoursecontentdeleted'] = 'Course content deleted';
 $string['eventcoursecreated'] = 'Course created';
@@ -717,11 +720,13 @@ $string['eventcoursedeleted'] = 'Course deleted';
 $string['eventcoursemodulecreated'] = 'Course module created';
 $string['eventcoursemoduledeleted'] = 'Course module deleted';
 $string['eventcoursemoduleupdated'] = 'Course module updated';
+$string['eventcoursemoduleviewed'] = 'Course module viewed';
 $string['eventcourseresetended'] = 'Course reset ended';
 $string['eventcourseresetstarted'] = 'Course reset started';
 $string['eventcourserestored'] = 'Course restored';
 $string['eventcourseupdated'] = 'Course updated';
 $string['eventcoursesectionupdated'] = ' Course section updated';
+$string['eventcoursemoduleinstancelistviewed'] = 'Course module instance list viewed';
 $string['eventusercreated'] = 'User created';
 $string['eventuserdeleted'] = 'User deleted';
 $string['eventuserlistviewed'] = 'User list viewed';
@@ -785,7 +790,7 @@ $string['forgotteninvalidurl'] = 'Invalid password reset URL';
 $string['format'] = 'Format';
 $string['format_help'] = 'The course format determines the layout of the course page.
 
-* SCORM format - For displaying a SCORM package in the first section of the course page (as an alternative to using the SCORM/AICC module)
+* Single activity format - For displaying a single activity or resource (such as a Quiz or SCORM package) on the course page
 * Social format - A forum is displayed on the course page
 * Topics format - The course page is organised into topic sections
 * Weekly format - The course page is organised into weekly sections, with the first week starting on the course start date';
@@ -1332,7 +1337,6 @@ $string['numyears'] = '{$a} years';
 $string['ok'] = 'OK';
 $string['oldpassword'] = 'Current password';
 $string['olduserdirectory'] = 'This is the OLD users directory, and is no longer needed. You may safely delete it. The files it contains have been copied to the NEW user directory.';
-$string['opentoguests'] = 'Guest access';
 $string['optional'] = 'optional';
 $string['options'] = 'options';
 $string['order'] = 'Order';
