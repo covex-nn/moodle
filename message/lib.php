@@ -499,8 +499,8 @@ function message_print_usergroup_selector($viewing, $courses, $coursecontexts, $
             if (has_capability('moodle/course:viewparticipants', $coursecontexts[$course->id])) {
                 //Not using short_text() as we want the end of the course name. Not the beginning.
                 $shortname = format_string($course->shortname, true, array('context' => $coursecontexts[$course->id]));
-                if (textlib::strlen($shortname) > MESSAGE_MAX_COURSE_NAME_LENGTH) {
-                    $courses_options[MESSAGE_VIEW_COURSE.$course->id] = '...'.textlib::substr($shortname, -MESSAGE_MAX_COURSE_NAME_LENGTH);
+                if (core_text::strlen($shortname) > MESSAGE_MAX_COURSE_NAME_LENGTH) {
+                    $courses_options[MESSAGE_VIEW_COURSE.$course->id] = '...'.core_text::substr($shortname, -MESSAGE_MAX_COURSE_NAME_LENGTH);
                 } else {
                     $courses_options[MESSAGE_VIEW_COURSE.$course->id] = $shortname;
                 }
@@ -766,7 +766,7 @@ function message_get_recent_conversations($user, $limitfrom=0, $limitto=100) {
     // Sort the conversations by $conversation->timecreated, newest to oldest
     // There may be multiple conversations with the same timecreated
     // The conversations array contains both read and unread messages (different tables) so sorting by ID won't work
-    $result = collatorlib::asort_objects_by_property($conversations, 'timecreated', collatorlib::SORT_NUMERIC);
+    $result = core_collator::asort_objects_by_property($conversations, 'timecreated', core_collator::SORT_NUMERIC);
     $conversations = array_reverse($conversations);
 
     return $conversations;
@@ -1198,7 +1198,7 @@ function message_print_search_results($frm, $showicontext=false, $currentuser=nu
 
                 // Load user-to record.
                 if ($message->useridto !== $USER->id) {
-                    $userto = $DB->get_record('user', array('id' => $message->useridto));
+                    $userto = core_user::get_user($message->useridto);
                     $tocontact = (array_key_exists($message->useridto, $contacts) and
                                     ($contacts[$message->useridto]->blocked == 0) );
                     $toblocked = (array_key_exists($message->useridto, $contacts) and
@@ -1211,7 +1211,7 @@ function message_print_search_results($frm, $showicontext=false, $currentuser=nu
 
                 // Load user-from record.
                 if ($message->useridfrom !== $USER->id) {
-                    $userfrom = $DB->get_record('user', array('id' => $message->useridfrom));
+                    $userfrom = core_user::get_user($message->useridfrom);
                     $fromcontact = (array_key_exists($message->useridfrom, $contacts) and
                                     ($contacts[$message->useridfrom]->blocked == 0) );
                     $fromblocked = (array_key_exists($message->useridfrom, $contacts) and
@@ -1294,10 +1294,16 @@ function message_print_search_results($frm, $showicontext=false, $currentuser=nu
 function message_print_user ($user=false, $iscontact=false, $isblocked=false, $includeicontext=false) {
     global $USER, $OUTPUT;
 
+    $userpictureparams = array('size' => 20, 'courseid' => SITEID);
+
     if ($user === false) {
-        echo $OUTPUT->user_picture($USER, array('size' => 20, 'courseid' => SITEID));
+        echo $OUTPUT->user_picture($USER, $userpictureparams);
+    } else if (core_user::is_real_user($user->id)) { // If not real user, then don't show any links.
+        $userpictureparams['link'] = false;
+        echo $OUTPUT->user_picture($USER, $userpictureparams);
+        echo fullname($user);
     } else {
-        echo $OUTPUT->user_picture($user, array('size' => 20, 'courseid' => SITEID));
+        echo $OUTPUT->user_picture($user, $userpictureparams);
 
         $link = new moodle_url("/message/index.php?id=$user->id");
         echo $OUTPUT->action_link($link, fullname($user), null, array('title' =>
@@ -1406,7 +1412,7 @@ function message_contact_link($userid, $linktype='add', $return=false, $script=n
  * @return string|bool. Returns a string if $return is true. Otherwise returns a boolean.
  */
 function message_history_link($userid1, $userid2, $return=false, $keywords='', $position='', $linktext='') {
-    global $OUTPUT;
+    global $OUTPUT, $PAGE;
     static $strmessagehistory;
 
     if (empty($strmessagehistory)) {
@@ -1441,6 +1447,9 @@ function message_history_link($userid1, $userid2, $return=false, $keywords='', $
             'resizable' => true);
 
     $link = new moodle_url('/message/index.php?history='.MESSAGE_HISTORY_ALL."&user1=$userid1&user2=$userid2$keywords$position");
+    if ($PAGE->url && $PAGE->url->get_param('viewing')) {
+        $link->param('viewing', $PAGE->url->get_param('viewing'));
+    }
     $action = null;
     $str = $OUTPUT->action_link($link, $fulllink, $action, array('title' => $strmessagehistory));
 
@@ -1844,7 +1853,7 @@ function message_get_history($user1, $user2, $limitnum=0, $viewingnewmessages=fa
         }
     }
 
-    $result = collatorlib::asort_objects_by_property($messages, 'timecreated', collatorlib::SORT_NUMERIC);
+    $result = core_collator::asort_objects_by_property($messages, 'timecreated', core_collator::SORT_NUMERIC);
 
     //if we only want the last $limitnum messages
     $messagecount = count($messages);
@@ -2091,7 +2100,7 @@ function message_post_message($userfrom, $userto, $message, $format) {
  * @return void
  */
 function message_print_contactlist_user($contact, $incontactlist = true, $isblocked = false, $selectcontacturl = null, $showactionlinks = true, $selecteduser=null) {
-    global $OUTPUT, $USER;
+    global $OUTPUT, $USER, $COURSE;
     $fullname  = fullname($contact);
     $fullnamelink  = $fullname;
 
@@ -2115,7 +2124,7 @@ function message_print_contactlist_user($contact, $incontactlist = true, $isbloc
 
     echo html_writer::start_tag('tr');
     echo html_writer::start_tag('td', array('class' => 'pix'));
-    echo $OUTPUT->user_picture($contact, array('size' => 20, 'courseid' => SITEID));
+    echo $OUTPUT->user_picture($contact, array('size' => 20, 'courseid' => $COURSE->id));
     echo html_writer::end_tag('td');
 
     echo html_writer::start_tag('td', array('class' => 'contact'));
@@ -2280,12 +2289,16 @@ function message_print_heading($title, $colspan=3) {
  * system configuration
  *
  * @param bool $ready only return ready-to-use processors
+ * @param bool $reset Reset list of message processors (used in unit tests)
  * @return mixed $processors array of objects containing information on message processors
  */
-function get_message_processors($ready = false) {
+function get_message_processors($ready = false, $reset = false) {
     global $DB, $CFG;
 
     static $processors;
+    if ($reset) {
+        $processors = array();
+    }
 
     if (empty($processors)) {
         // Get all processors, ensure the name column is the first so it will be the array key
@@ -2337,8 +2350,8 @@ function get_message_processors($ready = false) {
  */
 function get_message_providers() {
     global $CFG, $DB;
-    require_once($CFG->libdir . '/pluginlib.php');
-    $pluginman = plugin_manager::instance();
+
+    $pluginman = core_plugin_manager::instance();
 
     $providers = $DB->get_records('message_providers', null, 'name');
 
@@ -2346,7 +2359,7 @@ function get_message_providers() {
     foreach ($providers as $providerid => $provider) {
         $plugin = $pluginman->get_plugin_info($provider->component);
         if ($plugin) {
-            if ($plugin->get_status() === plugin_manager::PLUGIN_STATUS_MISSING) {
+            if ($plugin->get_status() === core_plugin_manager::PLUGIN_STATUS_MISSING) {
                 unset($providers[$providerid]);   // Plugins does not exist
                 continue;
             }

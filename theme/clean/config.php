@@ -48,18 +48,12 @@ $THEME->plugins_exclude_sheets = array(
     'block' => array(
         'html',
     ),
-    'gradereport' => array(
-        'grader',
-    ),
 );
 
 $THEME->rendererfactory = 'theme_overridden_renderer_factory';
-$THEME->csspostprocess = 'clean_process_css';
+$THEME->csspostprocess = 'theme_clean_process_css';
 
-$useragent = '';
-if (!empty($_SERVER['HTTP_USER_AGENT'])) {
-    $useragent = $_SERVER['HTTP_USER_AGENT'];
-}
-if (strpos($useragent, 'MSIE 8') || strpos($useragent, 'MSIE 7')) {
-    $THEME->javascripts[] = 'html5shiv';
-}
+$THEME->blockrtlmanipulations = array(
+    'side-pre' => 'side-post',
+    'side-post' => 'side-pre'
+);

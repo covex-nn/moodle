@@ -87,13 +87,15 @@ class sqlite3_pdo_moodle_database extends pdo_moodle_database {
      * @return bool success
      */
     public function create_database($dbhost, $dbuser, $dbpass, $dbname, array $dboptions=null) {
+        global $CFG;
+
         $this->dbhost = $dbhost;
         $this->dbuser = $dbuser;
         $this->dbpass = $dbpass;
         $this->dbname = $dbname;
         $filepath = $this->get_dbfilepath();
         $dirpath = dirname($filepath);
-        @mkdir($dirpath);
+        @mkdir($dirpath, $CFG->directorypermissions, true);
         return touch($filepath);
     }
 
@@ -199,9 +201,8 @@ class sqlite3_pdo_moodle_database extends pdo_moodle_database {
     public function get_columns($table, $usecache=true) {
 
         if ($usecache) {
-            $properties = array('dbfamily' => $this->get_dbfamily(), 'settings' => $this->get_settings_hash());
-            $cache = cache::make('core', 'databasemeta', $properties);
-            if ($data = $cache->get($table)) {
+            $this->init_caches();
+            if ($data = $this->metacache->get($table)) {
                 return $data;
             }
         }
@@ -298,7 +299,7 @@ class sqlite3_pdo_moodle_database extends pdo_moodle_database {
         }
 
         if ($usecache) {
-            $result = $cache->set($table, $structure);
+            $result = $this->metacache->set($table, $structure);
         }
 
         return $structure;

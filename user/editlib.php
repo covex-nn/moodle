@@ -129,22 +129,41 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
 
     $strrequired = get_string('required');
 
-    $nameordercheck = new stdClass();
-    $nameordercheck->firstname = 'a';
-    $nameordercheck->lastname  = 'b';
-    if (fullname($nameordercheck) == 'b a' ) {  // See MDL-4325
-        $mform->addElement('text', 'lastname',  get_string('lastname'),  'maxlength="100" size="30"');
-        $mform->addElement('text', 'firstname', get_string('firstname'), 'maxlength="100" size="30"');
-    } else {
-        $mform->addElement('text', 'firstname', get_string('firstname'), 'maxlength="100" size="30"');
-        $mform->addElement('text', 'lastname',  get_string('lastname'),  'maxlength="100" size="30"');
+    $nameformat = $CFG->fullnamedisplay;
+    if ($nameformat == 'language') {
+        $nameformat = get_string('fullnamedisplay');
+    }
+
+    $necessarynames = array('firstname', 'lastname');
+    $enablednames = array_diff(get_all_user_name_fields(), $necessarynames);
+    // Get a list of all of the enabled names.
+    $enabledadditionalusernames = array();
+    foreach ($enablednames as $enabledname) {
+        if (strpos($CFG->fullnamedisplay, $enabledname) !== false) {
+            $enabledadditionalusernames[] = $enabledname;
+        }
+    }
+
+    $combinednames = array_merge($necessarynames, $enabledadditionalusernames);
+    $requirednames = order_in_string($combinednames, $nameformat);
+    foreach ($necessarynames as $necessaryname) {
+        if (!in_array($necessaryname, $requirednames)) {
+            $requirednames = order_in_string($combinednames, get_string('fullnamedisplay'));
+        }
+    }
+    foreach ($requirednames as $fullname) {
+        $mform->addElement('text', $fullname,  get_string($fullname),  'maxlength="100" size="30"');
+        $mform->setType($fullname, PARAM_NOTAGS);
     }
 
     $mform->addRule('firstname', $strrequired, 'required', null, 'client');
-    $mform->setType('firstname', PARAM_NOTAGS);
-
     $mform->addRule('lastname', $strrequired, 'required', null, 'client');
-    $mform->setType('lastname', PARAM_NOTAGS);
+
+    $morenames = array_diff($enabledadditionalusernames, $requirednames);
+    foreach ($morenames as $addname) {
+        $mform->addElement('text', $addname,  get_string($addname), 'maxlength="100" size="30"');
+        $mform->setType($addname, PARAM_NOTAGS);
+    }
 
     // Do not show email field if change confirmation is pending
     if (!empty($CFG->emailchangeconfirmation) and !empty($user->preference_newemail)) {
@@ -189,6 +208,7 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $choices['2'] = get_string('emaildigestsubjects');
     $mform->addElement('select', 'maildigest', get_string('emaildigest'), $choices);
     $mform->setDefault('maildigest', 0);
+    $mform->addHelpButton('maildigest', 'emaildigest');
 
     $choices = array();
     $choices['1'] = get_string('autosubscribeyes');
@@ -206,20 +226,25 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
 
     $editors = editors_get_enabled();
     if (count($editors) > 1) {
-        $choices = array();
-        $choices['0'] = get_string('texteditor');
-        $choices['1'] = get_string('htmleditor');
-        $mform->addElement('select', 'htmleditor', get_string('textediting'), $choices);
-        $mform->setDefault('htmleditor', 1);
+        $choices = array('' => get_string('defaulteditor'));
+        $firsteditor = '';
+        foreach (array_keys($editors) as $editor) {
+            if (!$firsteditor) {
+                $firsteditor = $editor;
+            }
+            $choices[$editor] = get_string('pluginname', 'editor_' . $editor);
+        }
+        $mform->addElement('select', 'preference_htmleditor', get_string('textediting'), $choices);
+        $mform->setDefault('preference_htmleditor', '');
     } else {
-        $mform->addElement('hidden', 'htmleditor');
-        $mform->setDefault('htmleditor', 1);
-        $mform->setType('htmleditor', PARAM_INT);
+        // Empty string means use the first chosen text editor.
+        $mform->addElement('hidden', 'preference_htmleditor');
+        $mform->setDefault('preference_htmleditor', '');
+        $mform->setType('preference_htmleditor', PARAM_PLUGIN);
     }
 
     $mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="21"');
     $mform->setType('city', PARAM_TEXT);
-    $mform->addRule('city', $strrequired, 'required', null, 'client');
     if (!empty($CFG->defaultcity)) {
         $mform->setDefault('city', $CFG->defaultcity);
     }
@@ -227,7 +252,6 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $choices = get_string_manager()->get_list_of_countries();
     $choices= array(''=>get_string('selectacountry').'...') + $choices;
     $mform->addElement('select', 'country', get_string('selectacountry'), $choices);
-    $mform->addRule('country', $strrequired, 'required', null, 'client');
     if (!empty($CFG->country)) {
         $mform->setDefault('country', $CFG->country);
     }
@@ -243,6 +267,13 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
 
     $mform->addElement('select', 'lang', get_string('preferredlanguage'), get_string_manager()->get_list_of_translations());
     $mform->setDefault('lang', $CFG->lang);
+
+    // Multi-Calendar Support - see MDL-18375.
+    $calendartypes = \core_calendar\type_factory::get_list_of_calendar_types();
+    // We do not want to show this option unless there is more than one calendar type to display.
+    if (count($calendartypes) > 1) {
+        $mform->addElement('select', 'calendartype', get_string('preferredcalendar', 'calendar'), $calendartypes);
+    }
 
     if (!empty($CFG->allowuserthemes)) {
         $choices = array();
@@ -280,6 +311,18 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
 
     }
 
+    $alladditionalnames = array_diff(get_all_user_name_fields(), $necessarynames);
+    if (count($enabledadditionalusernames) < count($alladditionalnames)) {
+        $mform->addElement('header', 'moodle_additional_names', get_string('additionalnames'));
+        foreach ($alladditionalnames as $allname) {
+            if (!in_array($allname, $enabledadditionalusernames)) {
+                $mform->addElement('text', $allname, get_string($allname), 'maxlength="100" size="30"');
+                $mform->setType($allname, PARAM_NOTAGS);
+            }
+        }
+
+    }
+
     if (!empty($CFG->usetags) and empty($USER->newadminuser)) {
         $mform->addElement('header', 'moodle_interests', get_string('interests'));
         $mform->addElement('tags', 'interests', get_string('interestslist'), array('display' => 'noofficial'));
@@ -310,10 +353,10 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $mform->addElement('text', 'idnumber', get_string('idnumber'), 'maxlength="255" size="25"');
     $mform->setType('idnumber', PARAM_NOTAGS);
 
-    $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="40" size="25"');
+    $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="255" size="25"');
     $mform->setType('institution', PARAM_TEXT);
 
-    $mform->addElement('text', 'department', get_string('department'), 'maxlength="30" size="25"');
+    $mform->addElement('text', 'department', get_string('department'), 'maxlength="255" size="25"');
     $mform->setType('department', PARAM_TEXT);
 
     $mform->addElement('text', 'phone1', get_string('phone'), 'maxlength="20" size="25"');
@@ -322,7 +365,7 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $mform->addElement('text', 'phone2', get_string('phone2'), 'maxlength="20" size="25"');
     $mform->setType('phone2', PARAM_NOTAGS);
 
-    $mform->addElement('text', 'address', get_string('address'), 'maxlength="70" size="25"');
+    $mform->addElement('text', 'address', get_string('address'), 'maxlength="255" size="25"');
     $mform->setType('address', PARAM_TEXT);
 
 

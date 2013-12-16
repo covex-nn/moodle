@@ -602,16 +602,7 @@ function chat_login_user($chatid, $version, $groupid, $course) {
         if ($version == 'sockets') {
             // do not send 'enter' message, chatd will do it
         } else {
-            $message = new stdClass();
-            $message->chatid    = $chatuser->chatid;
-            $message->userid    = $chatuser->userid;
-            $message->groupid   = $groupid;
-            $message->message   = 'enter';
-            $message->system    = 1;
-            $message->timestamp = time();
-
-            $DB->insert_record('chat_messages', $message);
-            $DB->insert_record('chat_messages_current', $message);
+            chat_send_chatmessage($chatuser, 'enter', true);
         }
     }
 
@@ -637,16 +628,7 @@ function chat_delete_old_users() {
     if ($oldusers = $DB->get_records_select('chat_users', $query, $params) ) {
         $DB->delete_records_select('chat_users', $query, $params);
         foreach ($oldusers as $olduser) {
-            $message = new stdClass();
-            $message->chatid    = $olduser->chatid;
-            $message->userid    = $olduser->userid;
-            $message->groupid   = $olduser->groupid;
-            $message->message   = 'exit';
-            $message->system    = 1;
-            $message->timestamp = time();
-
-            $DB->insert_record('chat_messages', $message);
-            $DB->insert_record('chat_messages_current', $message);
+            chat_send_chatmessage($olduser, 'exit', true);
         }
     }
 }
@@ -709,6 +691,51 @@ function chat_update_chat_times($chatid=0) {
 }
 
 /**
+ * Send a message on the chat.
+ *
+ * @param object $chatuser The chat user record.
+ * @param string $messagetext The message to be sent.
+ * @param bool $system False for non-system messages, true for system messages.
+ * @param object $cm The course module object, pass it to save a database query when we trigger the event.
+ * @return int The message ID.
+ * @since 2.6
+ */
+function chat_send_chatmessage($chatuser, $messagetext, $system = false, $cm = null) {
+    global $DB;
+
+    $message = new stdClass();
+    $message->chatid    = $chatuser->chatid;
+    $message->userid    = $chatuser->userid;
+    $message->groupid   = $chatuser->groupid;
+    $message->message   = $messagetext;
+    $message->system    = $system ? 1 : 0;
+    $message->timestamp = time();
+
+    $messageid = $DB->insert_record('chat_messages', $message);
+    $DB->insert_record('chat_messages_current', $message);
+    $message->id = $messageid;
+
+    if (!$system) {
+
+        if (empty($cm)) {
+            $cm = get_coursemodule_from_instance('chat', $chatuser->chatid, $chatuser->course);
+        }
+
+        $params = array(
+            'context' => context_module::instance($cm->id),
+            'objectid' => $message->id,
+            // We set relateduserid, because when triggered from the chat daemon, the event userid is null.
+            'relateduserid' => $chatuser->userid
+        );
+        $event = \mod_chat\event\message_sent::create($params);
+        $event->add_record_snapshot('chat_messages', $message);
+        $event->trigger();
+    }
+
+    return $message->id;
+}
+
+/**
  * @global object
  * @global object
  * @param object $message
@@ -758,8 +785,11 @@ function chat_format_message_manually($message, $courseid, $sender, $currentuser
         $output->text = $message->strtime.': '.get_string('message'.$message->message, 'chat', fullname($sender));
         $output->html  = '<table class="chat-event"><tr'.$rowclass.'><td class="picture">'.$message->picture.'</td><td class="text">';
         $output->html .= '<span class="event">'.$output->text.'</span></td></tr></table>';
-        $output->basic = '<dl><dt class="event">'.$message->strtime.': '.get_string('message'.$message->message, 'chat', fullname($sender)).'</dt></dl>';
-
+        $output->basic = '<tr class="r1">
+                            <th scope="row" class="cell c1 title"></th>
+                            <td class="cell c2 text">' . get_string('message'.$message->message, 'chat', fullname($sender)) . '</td>
+                            <td class="cell c3">' . $message->strtime . '</td>
+                          </tr>';
         if($message->message == 'exit' or $message->message == 'enter') {
             $output->refreshusers = true; //force user panel refresh ASAP
         }
@@ -784,13 +814,16 @@ function chat_format_message_manually($message, $courseid, $sender, $currentuser
         $beepwho = trim(substr($text, 5));
 
         if ($beepwho == 'all') {   // everyone
-            $outinfo = $message->strtime.': '.get_string('messagebeepseveryone', 'chat', fullname($sender));
+            $outinfobasic = get_string('messagebeepseveryone', 'chat', fullname($sender));
+            $outinfo = $message->strtime . ': ' . $outinfobasic;
             $outmain = '';
+
             $output->beep = true;  // (eventually this should be set to
                                    //  to a filename uploaded by the user)
 
         } else if ($beepwho == $currentuser->id) {  // current user
-            $outinfo = $message->strtime.': '.get_string('messagebeepsyou', 'chat', fullname($sender));
+            $outinfobasic = get_string('messagebeepsyou', 'chat', fullname($sender));
+            $outinfo = $message->strtime . ': ' . $outinfobasic;
             $outmain = '';
             $output->beep = true;
 
@@ -839,9 +872,17 @@ function chat_format_message_manually($message, $courseid, $sender, $currentuser
     $output->html .= "<span class=\"title\">$outinfo</span>";
     if ($outmain) {
         $output->html .= ": $outmain";
-        $output->basic = '<dl><dt class="title">'.$outinfo.':</dt><dd class="text">'.$outmain.'</dd></dl>';
+        $output->basic = '<tr class="r0">
+                            <th scope="row" class="cell c1 title">' . $sender->firstname . '</th>
+                            <td class="cell c2 text">' . $outmain . '</td>
+                            <td class="cell c3">' . $message->strtime . '</td>
+                          </tr>';
     } else {
-        $output->basic = '<dl><dt class="title">'.$outinfo.'</dt></dl>';
+        $output->basic = '<tr class="r1">
+                            <th scope="row" class="cell c1 title"></th>
+                            <td class="cell c2 text">' . $outinfobasic . '</td>
+                            <td class="cell c3">' . $message->strtime . '</td>
+                          </tr>';
     }
     $output->html .= "</td></tr></table>";
     return $output;
@@ -1274,11 +1315,12 @@ function chat_extend_settings_navigation(settings_navigation $settings, navigati
 /**
  * user logout event handler
  *
- * @param object $user full $USER object
+ * @param \core\event\user_loggedout $event The event.
+ * @return void
  */
-function chat_user_logout($user) {
+function chat_user_logout(\core\event\user_loggedout $event) {
     global $DB;
-    $DB->delete_records('chat_users', array('userid'=>$user->id));
+    $DB->delete_records('chat_users', array('userid' => $event->objectid));
 }
 
 /**

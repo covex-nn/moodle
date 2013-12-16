@@ -208,6 +208,7 @@ img.iconsmall {
 #page-admin-index .releasenoteslink,
 #page-admin-index .adminwarning,
 #page-admin-index .maturitywarning,
+#page-admin-index .testsitewarning,
 #page-admin-index .maturityinfo {
     .alert;
     width: 60%;
@@ -215,6 +216,7 @@ img.iconsmall {
     margin: auto;
 }
 #page-admin-index .maturitywarning,
+#page-admin-index .testsitewarning,
 #page-admin-index .adminwarning.maturityinfo.maturity50 {
     .alert-error;
 }
@@ -398,6 +400,31 @@ img.iconsmall {
     direction: ltr;
 }
 
+/* Styles for flags on admin settings */
+.adminsettingsflags {
+    float: right;
+}
+
+.dir-rtl .adminsettingsflags {
+    float: left;
+}
+
+.adminsettingsflags label {
+    margin-right: 7px;
+}
+
+.dir-rtl .adminsettingsflags label {
+    margin-left: 7px;
+}
+
+.form-description {
+    clear: right;
+}
+
+.dir-rtl .form-description {
+    clear: left;
+}
+
 .form-item .form-setting .form-htmlarea {
     width: 640px;
     display: inline;
@@ -418,7 +445,10 @@ img.iconsmall {
     margin-right: 0.5em;
     display: inline;
 }
-
+.dir-rtl .form-item .form-setting .defaultsnext {
+    margin-left: 0.5em;
+    margin-right: 0;
+}
 .form-item .form-setting .locked-checkbox {
     margin-right: 0.2em;
     margin-left: 0.5em;

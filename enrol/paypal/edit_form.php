@@ -46,7 +46,7 @@ class enrol_paypal_edit_form extends moodleform {
 
         $mform->addElement('text', 'cost', get_string('cost', 'enrol_paypal'), array('size'=>4));
         $mform->setType('cost', PARAM_RAW); // Use unformat_float to get real value.
-        $mform->setDefault('cost', $plugin->get_config('cost'));
+        $mform->setDefault('cost', format_float($plugin->get_config('cost'), 2, true));
 
         $paypalcurrencies = $plugin->get_currencies();
         $mform->addElement('select', 'currency', get_string('currency', 'enrol_paypal'), $paypalcurrencies);
@@ -79,6 +79,10 @@ class enrol_paypal_edit_form extends moodleform {
         $mform->addElement('hidden', 'courseid');
         $mform->setType('courseid', PARAM_INT);
 
+        if (enrol_accessing_via_instance($instance)) {
+            $mform->addElement('static', 'selfwarn', get_string('instanceeditselfwarning', 'core_enrol'), get_string('instanceeditselfwarningtext', 'core_enrol'));
+        }
+
         $this->add_action_buttons(true, ($instance->id ? null : get_string('addinstance', 'enrol')));
 
         $this->set_data($instance);
@@ -90,15 +94,13 @@ class enrol_paypal_edit_form extends moodleform {
 
         list($instance, $plugin, $context) = $this->_customdata;
 
-        if ($data['status'] == ENROL_INSTANCE_ENABLED) {
-            if (!empty($data['enrolenddate']) and $data['enrolenddate'] < $data['enrolstartdate']) {
-                $errors['enrolenddate'] = get_string('enrolenddaterror', 'enrol_paypal');
-            }
+        if (!empty($data['enrolenddate']) and $data['enrolenddate'] < $data['enrolstartdate']) {
+            $errors['enrolenddate'] = get_string('enrolenddaterror', 'enrol_paypal');
+        }
 
-            if (!is_numeric($data['cost'])) {
-                $errors['cost'] = get_string('costerror', 'enrol_paypal');
-
-            }
+        $cost = str_replace(get_string('decsep', 'langconfig'), '.', $data['cost']);
+        if (!is_numeric($cost)) {
+            $errors['cost'] = get_string('costerror', 'enrol_paypal');
         }
 
         return $errors;

@@ -201,19 +201,20 @@ class assignment_online extends assignment_base {
         $this->update_grade($submission);
         $fs = get_file_storage();
         $files = $fs->get_area_files($this->context->id, 'mod_assignment', 'submission', $submission->id);
+
         // Let Moodle know that an assessable content was uploaded (eg for plagiarism detection)
-        $eventdata = new stdClass();
-        $eventdata->modulename   = 'assignment';
-        $eventdata->name         = 'update_submission';
-        $eventdata->cmid         = $this->cm->id;
-        $eventdata->itemid       = $update->id;
-        $eventdata->courseid     = $this->course->id;
-        $eventdata->userid       = $USER->id;
-        $eventdata->content      = trim(format_text($update->data1, $update->data2));
-        if ($files) {
-            $eventdata->pathnamehashes = array_keys($files);
-        }
-        events_trigger('assessable_content_uploaded', $eventdata);
+        $params = array(
+            'context' => $this->context,
+            'objectid' => $submission->id,
+            'other' => array(
+                'content' => trim(format_text($update->data1, $update->data2)),
+                'pathnamehashes' => array_keys($files),
+                'triggeredfrom' => 'update_submission'
+            )
+        );
+        $event = \assignment_online\event\assessable_uploaded::create($params);
+        $event->trigger();
+
         return $submission;
     }
 
@@ -280,15 +281,9 @@ class assignment_online extends assignment_base {
 
     function preprocess_submission(&$submission) {
         if ($this->assignment->var1 && empty($submission->submissioncomment)) {  // comment inline
-            if ($this->usehtmleditor) {
-                // Convert to html, clean & copy student data to teacher
-                $submission->submissioncomment = format_text($submission->data1, $submission->data2);
-                $submission->format = FORMAT_HTML;
-            } else {
-                // Copy student data to teacher
-                $submission->submissioncomment = $submission->data1;
-                $submission->format = $submission->data2;
-            }
+            // Convert to html, clean & copy student data to teacher
+            $submission->submissioncomment = format_text($submission->data1, $submission->data2);
+            $submission->format = FORMAT_HTML;
         }
     }
 
@@ -419,7 +414,7 @@ class assignment_online extends assignment_base {
             send_file_not_found();
         }
 
-        session_get_instance()->write_close(); // unlock session during fileserving
+        \core\session\manager::write_close(); // Unlock session during file serving.
 
         send_stored_file($file, 60*60, 0, true, $options);
     }

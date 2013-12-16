@@ -64,6 +64,8 @@ class file_storage {
      * @param int $filepermissions new file permissions
      */
     public function __construct($filedir, $trashdir, $tempdir, $dirpermissions, $filepermissions) {
+        global $CFG;
+
         $this->filedir         = $filedir;
         $this->trashdir        = $trashdir;
         $this->tempdir         = $tempdir;
@@ -79,6 +81,7 @@ class file_storage {
             if (!file_exists($this->filedir.'/warning.txt')) {
                 file_put_contents($this->filedir.'/warning.txt',
                                   'This directory contains the content of uploaded files and is controlled by Moodle code. Do not manually move, change or rename any of the files and subdirectories here.');
+                chmod($this->filedir.'/warning.txt', $CFG->filepermissions);
             }
         }
         // make sure the file pool directory exists
@@ -261,6 +264,71 @@ class file_storage {
         }
 
         return $newfilename;
+    }
+
+    /**
+     * Return an available directory name.
+     *
+     * This will return the next available directory name in the area, adding/incrementing a suffix
+     * of the last portion of path, ie: /path/ > /path (1)/ > /path (2)/ > etc...
+     *
+     * If the file path passed is available without modification, it is returned as is.
+     *
+     * @param int $contextid context ID.
+     * @param string $component component.
+     * @param string $filearea file area.
+     * @param int $itemid area item ID.
+     * @param string $suggestedpath the suggested file path.
+     * @return string available file path
+     * @since 2.5
+     */
+    public function get_unused_dirname($contextid, $component, $filearea, $itemid, $suggestedpath) {
+        global $DB;
+
+        // Ensure suggestedpath has trailing '/'
+        $suggestedpath = rtrim($suggestedpath, '/'). '/';
+
+        // The directory does not exist, we return the same file path.
+        if (!$this->file_exists($contextid, $component, $filearea, $itemid, $suggestedpath, '.')) {
+            return $suggestedpath;
+        }
+
+        // Trying to locate a file path using the used pattern. We remove the used pattern from the path first.
+        if (preg_match('~^(/.+) \(([0-9]+)\)/$~', $suggestedpath, $matches)) {
+            $suggestedpath = $matches[1]. '/';
+        }
+
+        $filepathlike = $DB->sql_like_escape(rtrim($suggestedpath, '/')) . ' (%)/';
+
+        $filepathlikesql = $DB->sql_like('f.filepath', ':filepathlike');
+        $filepathlen = $DB->sql_length('f.filepath');
+        $sql = "SELECT filepath
+                FROM {files} f
+                WHERE
+                    f.contextid = :contextid AND
+                    f.component = :component AND
+                    f.filearea = :filearea AND
+                    f.itemid = :itemid AND
+                    f.filename = :filename AND
+                    $filepathlikesql
+                ORDER BY
+                    $filepathlen DESC,
+                    f.filepath DESC";
+        $params = array('contextid' => $contextid, 'component' => $component, 'filearea' => $filearea, 'itemid' => $itemid,
+                'filename' => '.', 'filepathlike' => $filepathlike);
+        $results = $DB->get_fieldset_sql($sql, $params, IGNORE_MULTIPLE);
+
+        // Loop over the results to make sure we are working on a valid file path. Because '/path (1)/' and '/path (copy)/'
+        // would both be returned, but only the one only containing digits should be used.
+        $number = 1;
+        foreach ($results as $result) {
+            if (preg_match('~ \(([0-9]+)\)/$~', $result, $matches)) {
+                $number = (int)($matches[1]) + 1;
+                break;
+            }
+        }
+
+        return rtrim($suggestedpath, '/'). ' (' . $number . ')/';
     }
 
     /**
@@ -482,7 +550,7 @@ class file_storage {
      * @param int $itemid item ID or all files if not specified
      * @param string $sort A fragment of SQL to use for sorting
      * @param bool $includedirs whether or not include directories
-     * @return array of stored_files indexed by pathanmehash
+     * @return stored_file[] array of stored_files indexed by pathanmehash
      */
     public function get_area_files($contextid, $component, $filearea, $itemid = false, $sort = "itemid, filepath, filename", $includedirs = true) {
         global $DB;
@@ -579,10 +647,12 @@ class file_storage {
     protected function sort_area_tree($tree) {
         foreach ($tree as $key => &$value) {
             if ($key == 'subdirs') {
-                $value = $this->sort_area_tree($value);
-                collatorlib::ksort($value, collatorlib::SORT_NATURAL);
+                core_collator::ksort($value, core_collator::SORT_NATURAL);
+                foreach ($value as $subdirname => &$subtree) {
+                    $subtree = $this->sort_area_tree($subtree);
+                }
             } else if ($key == 'files') {
-                collatorlib::ksort($value, collatorlib::SORT_NATURAL);
+                core_collator::ksort($value, core_collator::SORT_NATURAL);
             }
         }
         return $tree;
@@ -613,7 +683,7 @@ class file_storage {
         if ($recursive) {
 
             $dirs = $includedirs ? "" : "AND filename <> '.'";
-            $length = textlib::strlen($filepath);
+            $length = core_text::strlen($filepath);
 
             $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                       FROM {files} f
@@ -642,7 +712,7 @@ class file_storage {
             $result = array();
             $params = array('contextid'=>$contextid, 'component'=>$component, 'filearea'=>$filearea, 'itemid'=>$itemid, 'filepath'=>$filepath, 'dirid'=>$directory->get_id());
 
-            $length = textlib::strlen($filepath);
+            $length = core_text::strlen($filepath);
 
             if ($includedirs) {
                 $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
@@ -961,7 +1031,7 @@ class file_storage {
                 }
             }
 
-            if ($key == 'referencefileid' or $key == 'referencelastsync' or $key == 'referencelifetime') {
+            if ($key == 'referencefileid' or $key == 'referencelastsync') {
                 $value = clean_param($value, PARAM_INT);
             }
 
@@ -1330,10 +1400,6 @@ class file_storage {
             $filerecord->sortorder = 0;
         }
 
-        // TODO MDL-33416 [2.4] fields referencelastsync and referencelifetime to be removed from {files} table completely
-        unset($filerecord->referencelastsync);
-        unset($filerecord->referencelifetime);
-
         $filerecord->mimetype          = empty($filerecord->mimetype) ? $this->mimetype($filerecord->filename) : $filerecord->mimetype;
         $filerecord->userid            = empty($filerecord->userid) ? null : $filerecord->userid;
         $filerecord->source            = empty($filerecord->source) ? null : $filerecord->source;
@@ -1554,6 +1620,8 @@ class file_storage {
      * @return array (contenthash, filesize, newfile)
      */
     public function add_file_to_pool($pathname, $contenthash = NULL) {
+        global $CFG;
+
         if (!is_readable($pathname)) {
             throw new file_exception('storedfilecannotread', '', $pathname);
         }
@@ -1565,14 +1633,14 @@ class file_storage {
 
         if (is_null($contenthash)) {
             $contenthash = sha1_file($pathname);
-        } else if (debugging('', DEBUG_DEVELOPER)) {
+        } else if ($CFG->debugdeveloper) {
             $filehash = sha1_file($pathname);
             if ($filehash === false) {
                 throw new file_exception('storedfilecannotread', '', $pathname);
             }
             if ($filehash !== $contenthash) {
                 // Hopefully this never happens, if yes we need to fix calling code.
-                debugging("Invalid contenthash submitted for file $pathname");
+                debugging("Invalid contenthash submitted for file $pathname", DEBUG_DEVELOPER);
                 $contenthash = $filehash;
             }
         }
@@ -2034,10 +2102,7 @@ class file_storage {
 
         $now = time();
         foreach ($rs as $record) {
-            require_once($CFG->dirroot.'/repository/lib.php');
-            $repo = repository::get_instance($record->repositoryid);
-            $lifetime = $repo->get_reference_file_lifetime($reference);
-            $this->update_references($record->id, $now, $lifetime,
+            $this->update_references($record->id, $now, null,
                     $storedfile->get_contenthash(), $storedfile->get_filesize(), 0);
         }
         $rs->close();
@@ -2170,8 +2235,7 @@ class file_storage {
 
         $referencefields = array('repositoryid' => 'repositoryid',
             'reference' => 'reference',
-            'lastsync' => 'referencelastsync',
-            'lifetime' => 'referencelifetime');
+            'lastsync' => 'referencelastsync');
 
         // id is specifically named to prevent overlaping between the two tables.
         $fields = array();
@@ -2191,10 +2255,12 @@ class file_storage {
      * Returns the id of the record in {files_reference} that matches the passed repositoryid and reference
      *
      * If the record already exists, its id is returned. If there is no such record yet,
-     * new one is created (using the lastsync and lifetime provided, too) and its id is returned.
+     * new one is created (using the lastsync provided, too) and its id is returned.
      *
      * @param int $repositoryid
      * @param string $reference
+     * @param int $lastsync
+     * @param int $lifetime argument not used any more
      * @return int
      */
     private function get_or_create_referencefileid($repositoryid, $reference, $lastsync = null, $lifetime = null) {
@@ -2213,8 +2279,7 @@ class file_storage {
                 'repositoryid'  => $repositoryid,
                 'reference'     => $reference,
                 'referencehash' => sha1($reference),
-                'lastsync'      => $lastsync,
-                'lifetime'      => $lifetime));
+                'lastsync'      => $lastsync));
         } catch (dml_exception $e) {
             // if inserting the new record failed, chances are that the race condition has just
             // occured and the unique index did not allow to create the second record with the same
@@ -2248,12 +2313,11 @@ class file_storage {
      *
      * This function is called after synchronisation of an external file and updates the
      * contenthash, filesize and status of all files that reference this external file
-     * as well as time last synchronised and sync lifetime (how long we don't need to call
-     * synchronisation for this reference).
+     * as well as time last synchronised.
      *
      * @param int $referencefileid
      * @param int $lastsync
-     * @param int $lifetime
+     * @param int $lifetime argument not used any more, liefetime is returned by repository
      * @param string $contenthash
      * @param int $filesize
      * @param int $status 0 if ok or 666 if source is missing
@@ -2262,20 +2326,17 @@ class file_storage {
         global $DB;
         $referencefileid = clean_param($referencefileid, PARAM_INT);
         $lastsync = clean_param($lastsync, PARAM_INT);
-        $lifetime = clean_param($lifetime, PARAM_INT);
         validate_param($contenthash, PARAM_TEXT, NULL_NOT_ALLOWED);
         $filesize = clean_param($filesize, PARAM_INT);
         $status = clean_param($status, PARAM_INT);
         $params = array('contenthash' => $contenthash,
                     'filesize' => $filesize,
                     'status' => $status,
-                    'referencefileid' => $referencefileid,
-                    'lastsync' => $lastsync,
-                    'lifetime' => $lifetime);
+                    'referencefileid' => $referencefileid);
         $DB->execute('UPDATE {files} SET contenthash = :contenthash, filesize = :filesize,
-            status = :status, referencelastsync = :lastsync, referencelifetime = :lifetime
+            status = :status
             WHERE referencefileid = :referencefileid', $params);
-        $data = array('id' => $referencefileid, 'lastsync' => $lastsync, 'lifetime' => $lifetime);
+        $data = array('id' => $referencefileid, 'lastsync' => $lastsync);
         $DB->update_record('files_reference', (object)$data);
     }
 }
