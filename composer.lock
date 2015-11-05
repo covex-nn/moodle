@@ -4,8 +4,8 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
         "This file is @generated automatically"
     ],
-    "hash": "11bb7a0d77afeb5dad2bfdf544d9f1ef",
-    "content-hash": "6f600b96b4bacf264274d1edf2ddfa94",
+    "hash": "dbac681fd224b0a62b0fd07270156c0f",
+    "content-hash": "1510d1d6ee0815823c79dfa116a166e3",
     "packages": [
         {
             "name": "covex-nn/moodle-installer",
@@ -1059,11 +1059,17 @@
         },
         {
             "name": "moodlehq/behat-extension",
-            "version": "v1.29.4",
+            "version": "v1.29.5",
             "source": {
                 "type": "git",
-                "url": "https://github.com/moodlehq/moodle-behat-extension",
-                "reference": "ccc3027ba9959a23761e056a1cb570c66baa95ba"
+                "url": "https://github.com/moodlehq/moodle-behat-extension.git",
+                "reference": "0ea55a59bfbfef4e8dcf47067c56779e5a02cd63"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/moodlehq/moodle-behat-extension/zipball/0ea55a59bfbfef4e8dcf47067c56779e5a02cd63",
+                "reference": "0ea55a59bfbfef4e8dcf47067c56779e5a02cd63",
+                "shasum": ""
             },
             "require": {
                 "behat/behat": "2.5.3",
@@ -1073,7 +1079,7 @@
                 "behat/mink-selenium2-driver": "1.1.1",
                 "guzzlehttp/guzzle": "~3.1",
                 "php": ">=5.4.4",
-                "symfony/symfony": "2.4.4"
+                "symfony/symfony": "2.4.10"
             },
             "type": "library",
             "autoload": {
@@ -1098,7 +1104,10 @@
                 "Behat",
                 "Moodle"
             ],
-            "time": "2015-03-19 02:49:43"
+            "support": {
+                "source": "https://github.com/moodlehq/moodle-behat-extension/tree/v1.30.0"
+            },
+            "time": "2015-05-15 02:00:06"
         },
         {
             "name": "phpunit/dbunit",
@@ -1607,16 +1616,16 @@
         },
         {
             "name": "symfony/symfony",
-            "version": "v2.4.4",
+            "version": "v2.4.10",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/symfony.git",
-                "reference": "4697c33cdfb520dcf83fd6e4f7864fa26ddaebea"
+                "reference": "daed178afd4700dd18f4fb0ea6b72dcfd9a4792a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/symfony/zipball/4697c33cdfb520dcf83fd6e4f7864fa26ddaebea",
-                "reference": "4697c33cdfb520dcf83fd6e4f7864fa26ddaebea",
+                "url": "https://api.github.com/repos/symfony/symfony/zipball/daed178afd4700dd18f4fb0ea6b72dcfd9a4792a",
+                "reference": "daed178afd4700dd18f4fb0ea6b72dcfd9a4792a",
                 "shasum": ""
             },
             "require": {
@@ -1624,7 +1633,7 @@
                 "php": ">=5.3.3",
                 "psr/log": "~1.0",
                 "symfony/icu": "~1.0",
-                "twig/twig": "~1.11"
+                "twig/twig": "~1.12"
             },
             "replace": {
                 "symfony/browser-kit": "self.version",
@@ -1697,7 +1706,7 @@
                     "src/Symfony/Component/Intl/Resources/stubs/functions.php"
                 ]
             },
-            "notification-url": "http://packagist.org/downloads/",
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -1716,7 +1725,7 @@
             "keywords": [
                 "framework"
             ],
-            "time": "2014-04-27 13:39:18"
+            "time": "2014-09-28 17:03:37"
         },
         {
             "name": "twig/twig",
