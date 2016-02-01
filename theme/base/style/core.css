@@ -449,14 +449,15 @@ input#id_externalurl {direction:ltr;}
 .loginbox .potentialidps .potentialidplist {margin-left:40%;}
 .loginbox .potentialidps .potentialidplist div {text-align:left;}
 .loginbox .loginform {margin-top:1em;text-align:left;}
-.loginbox .loginform .form-label {float:left;text-align:right;width:44%;direction:rtl; white-space:nowrap;}
-.dir-rtl .loginbox .loginform .form-label {float:left;text-align:right;width:44%;direction:ltr; white-space:nowrap;}
-.loginbox .loginform .form-input {float:right;width:55%;}
+.loginbox .loginform .form-label {float:left;text-align:right;width:49%;white-space:nowrap;}
+.loginbox .loginform .form-input {float:right;width:50%;}
+.dir-rtl .loginbox .loginform .form-input {margin-right: 1%;}
 .loginbox .loginform .form-input input {width: 6em;}
 .loginbox .signupform {margin-top:1em;text-align:center;}
 .loginbox.twocolumns .loginpanel {float:left;width:49.5%;border-right: 1px solid;margin-bottom:-2000px;padding-bottom:2000px;}
 .loginbox.twocolumns .signuppanel {float:right;width:50%;margin-bottom:-2000px;padding-bottom:2000px;}
 .loginbox .potentialidp .smallicon { vertical-align: text-bottom; margin: 0 .3em; }
+.dir-rtl .loginbox.twocolumns .loginpanel, .dir-rtl.loginbox.twocolumns .signuppanel {float:right;}
 
 /**
  * Notes
@@ -799,6 +800,7 @@ body.tag .managelink {padding: 5px;}
 .corelightbox img {position:fixed;top:50%; left: 50%;}
 
 .mod-indent {display:table-cell;}
+.label .mod-indent {float:left; padding-top:20px}
 .mod-indent-1    {width:30px;}
 .mod-indent-2    {width:60px;}
 .mod-indent-3    {width:90px;}
@@ -813,8 +815,9 @@ body.tag .managelink {padding: 5px;}
 .mod-indent-12   {width:360px;}
 .mod-indent-13   {width:390px;}
 .mod-indent-14   {width:420px;}
-.mod-indent-15,
-.mod-indent-huge {width:420px;}
+.mod-indent-15   {width:450px;}
+.mod-indent-16,
+.mod-indent-huge {width:480px;}
 
 .dir-rtl .mform .fitem .felement {margin-right: 16%;margin-left:auto;text-align: right;}
 .dir-rtl .mform .fitem .felement input[name=email],
@@ -1362,7 +1365,8 @@ form#installform #id_dbpass, form#installform #id_prefix
 
 html[dir=rtl] .breadcrumb,
 html[dir=rtl] .headermain,
-html[dir=rtl] #page-header {float: right;}
+html[dir=rtl] #page-header,
+html[dir=rtl] #page-content {float: right;}
 
 html[dir=rtl] .formrow label.formlabel { float:right; }
 
@@ -1566,7 +1570,7 @@ img#persona_signin { cursor: pointer; }
 .moodle-actionmenu[data-enhanced].show .menu {position: absolute;text-align:left;z-index: 1000;display: block;background-color: #fff;border: 1px solid #ccc;-webkit-border-radius: 5px;-moz-border-radius: 5px;border-radius: 5px;-webkit-box-shadow: 5px 5px 20px 0 #666666;-moz-box-shadow: 5px 5px 20px 0 #666666;box-shadow: 5px 5px 20px 0 #666666;}
 .moodle-actionmenu[data-enhanced].show .menu a {
     display: block;
-    padding: 4px 1em 4px 28px;
+    padding: 2px 1em 2px 28px;
     color: #333333;
 }
 .moodle-actionmenu[data-enhanced].show .menu a > img {
@@ -1574,6 +1578,11 @@ img#persona_signin { cursor: pointer; }
     padding: 4px;
     width: 12px;
     height: 12px;
+}
+.moodle-actionmenu[data-enhanced].show .menu a > img,
+.moodle-actionmenu[data-enhanced].show .menu a > span {
+    display: inline-block;
+    vertical-align: middle;
 }
 .moodle-actionmenu[data-enhanced].show .menu a:hover {color: #ffffff;background-color: #0088cc;}
 .moodle-actionmenu[data-enhanced].show .menu a:first-child {-webkit-border-top-right-radius: 4px;border-top-right-radius: 4px;-webkit-border-top-left-radius: 4px;border-top-left-radius: 4px;-moz-border-radius-topright: 4px;-moz-border-radius-topleft: 4px;}
@@ -1584,8 +1593,10 @@ img#persona_signin { cursor: pointer; }
 .block .moodle-actionmenu {text-align: right;}
 
 .dir-rtl .block .moodle-actionmenu {text-align: right;}
+.dir-rtl .moodle-actionmenu[data-enhanced].show .menu a { display: block; padding: 2px 28px 2px 1em; }
 .dir-rtl .moodle-actionmenu[data-enhanced].show .menu {text-align: right;right: auto;left: 0;}
-.dir-rtl .moodle-actionmenu[data-enhanced].show .menu .iconsmall {margin-right: 0;margin-left: 8px;}
+.dir-rtl .moodle-actionmenu[data-enhanced].show .menu .iconsmall,
+.dir-rtl .moodle-actionmenu[data-enhanced].show .menu .smallicon { margin-right: -24px; margin-left: 4px; }
 
 .jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tl-bl {top: 100%;left: 0;margin-top: 4px;}
 .jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tr-bl {top: 100%;right: 100%;}
@@ -1792,4 +1803,9 @@ a:hover .caret {
     -ms-animation: progress-bar-stripes 2s linear infinite;
     -o-animation: progress-bar-stripes 2s linear infinite;
     animation: progress-bar-stripes 2s linear infinite;
+}
+
+body.lockscroll {
+  height: 100%;
+  overflow: hidden;
 }

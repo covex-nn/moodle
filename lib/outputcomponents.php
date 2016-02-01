@@ -1350,7 +1350,7 @@ class html_writer {
         if (empty($attributes['id'])) {
             $attributes['id'] = self::random_id('ts_');
         }
-        $timerselector = self::select($timeunits, $name, $currentdate[$userdatetype], null, array('id'=>$attributes['id']));
+        $timerselector = self::select($timeunits, $name, $currentdate[$userdatetype], null, $attributes);
         $label = self::tag('label', get_string(substr($type, 0, -1), 'form'), array('for'=>$attributes['id'], 'class'=>'accesshide'));
 
         return $label.$timerselector;
@@ -1562,7 +1562,11 @@ class html_writer {
 
             foreach ($table->data as $key => $row) {
                 if (($row === 'hr') && ($countcols)) {
-                    $output .= html_writer::tag('td', html_writer::tag('div', '', array('class' => 'tabledivider')), array('colspan' => $countcols));
+                    $output .= html_writer::start_tag('tr');
+                    $output .= html_writer::start_tag('td', array('colspan' => $countcols));
+                    $output .= html_writer::tag('div', '', array('class' => 'tabledivider'));
+                    $output .= html_writer::end_tag('td');
+                    $output .= html_writer::end_tag('tr') . "\n";
                 } else {
                     // Convert array rows to html_table_rows and cell strings to html_table_cell objects
                     if (!($row instanceof html_table_row)) {
@@ -1636,8 +1640,8 @@ class html_writer {
                         }
                         $output .= html_writer::tag($tagtype, $cell->text, $tdattributes) . "\n";
                     }
+                    $output .= html_writer::end_tag('tr') . "\n";
                 }
-                $output .= html_writer::end_tag('tr') . "\n";
             }
             $output .= html_writer::end_tag('tbody') . "\n";
         }
@@ -2335,7 +2339,7 @@ class paging_bar implements renderable {
                 $displaypage = $currpage + 1;
 
                 if ($this->page == $currpage) {
-                    $this->pagelinks[] = $displaypage;
+                    $this->pagelinks[] = html_writer::span($displaypage, 'current-page');
                 } else {
                     $pagelink = html_writer::link(new moodle_url($this->baseurl, array($this->pagevar=>$currpage)), $displaypage);
                     $this->pagelinks[] = $pagelink;

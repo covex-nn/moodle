@@ -117,15 +117,41 @@ class core_weblib_testcase extends advanced_testcase {
     }
 
     public function test_highlight() {
-        $this->assertSame('This is <span class="highlight">good</span>', highlight('good', 'This is good'));
-        $this->assertSame('<span class="highlight">span</span>', highlight('SpaN', 'span'));
-        $this->assertSame('<span class="highlight">SpaN</span>', highlight('span', 'SpaN'));
-        $this->assertSame('<span><span class="highlight">span</span></span>', highlight('span', '<span>span</span>'));
-        $this->assertSame('He <span class="highlight">is</span> <span class="highlight">good</span>', highlight('good is', 'He is good'));
-        $this->assertSame('This is <span class="highlight">good</span>', highlight('+good', 'This is good'));
-        $this->assertSame('This is good', highlight('-good', 'This is good'));
-        $this->assertSame('This is goodness', highlight('+good', 'This is goodness'));
-        $this->assertSame('This is <span class="highlight">good</span>ness', highlight('good', 'This is goodness'));
+        $this->assertSame('This is <span class="highlight">good</span>',
+                highlight('good', 'This is good'));
+
+        $this->assertSame('<span class="highlight">span</span>',
+                highlight('SpaN', 'span'));
+
+        $this->assertSame('<span class="highlight">SpaN</span>',
+                highlight('span', 'SpaN'));
+
+        $this->assertSame('<span><span class="highlight">span</span></span>',
+                highlight('span', '<span>span</span>'));
+
+        $this->assertSame('He <span class="highlight">is</span> <span class="highlight">good</span>',
+                highlight('good is', 'He is good'));
+
+        $this->assertSame('This is <span class="highlight">good</span>',
+                highlight('+good', 'This is good'));
+
+        $this->assertSame('This is good',
+                highlight('-good', 'This is good'));
+
+        $this->assertSame('This is goodness',
+                highlight('+good', 'This is goodness'));
+
+        $this->assertSame('This is <span class="highlight">good</span>ness',
+                highlight('good', 'This is goodness'));
+
+        $this->assertSame('<p><b>test</b> <b>1</b></p><p><b>1</b></p>',
+                highlight('test 1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
+
+        $this->assertSame('<p><b>test</b> <b>1</b></p><p><b>1</b></p>',
+                    highlight('test +1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
+
+        $this->assertSame('<p><b>test</b> 1</p><p>1</p>',
+                    highlight('test -1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
     }
 
     public function test_replace_ampersands() {
@@ -492,4 +518,43 @@ class core_weblib_testcase extends advanced_testcase {
         $this->assertEquals(DEBUG_NONE, $CFG->debug);
         $this->assertFalse($CFG->debugdeveloper);
     }
+
+    public function test_strip_pluginfile_content() {
+        $source = <<<SOURCE
+Hello!
+
+I'm writing to you from the Moodle Majlis in Muscat, Oman, where we just had several days of Moodle community goodness.
+
+URL outside a tag: https://moodle.org/logo/logo-240x60.gif
+Plugin url outside a tag: @@PLUGINFILE@@/logo-240x60.gif
+
+External link 1:<img src='https://moodle.org/logo/logo-240x60.gif' alt='Moodle'/>
+External link 2:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif"/>
+Internal link 1:<img src='@@PLUGINFILE@@/logo-240x60.gif' alt='Moodle'/>
+Internal link 2:<img alt="Moodle" src="@@PLUGINFILE@@logo-240x60.gif"/>
+Anchor link 1:<a href="@@PLUGINFILE@@logo-240x60.gif" alt="bananas">Link text</a>
+Anchor link 2:<a title="bananas" href="../logo-240x60.gif">Link text</a>
+Anchor + ext. img:<a title="bananas" href="../logo-240x60.gif"><img alt="Moodle" src="@@PLUGINFILE@@logo-240x60.gif"/></a>
+Ext. anchor + img:<a href="@@PLUGINFILE@@logo-240x60.gif"><img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif"/></a>
+SOURCE;
+        $expected = <<<EXPECTED
+Hello!
+
+I'm writing to you from the Moodle Majlis in Muscat, Oman, where we just had several days of Moodle community goodness.
+
+URL outside a tag: https://moodle.org/logo/logo-240x60.gif
+Plugin url outside a tag: @@PLUGINFILE@@/logo-240x60.gif
+
+External link 1:<img src="https://moodle.org/logo/logo-240x60.gif" alt="Moodle" />
+External link 2:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif" />
+Internal link 1:
+Internal link 2:
+Anchor link 1:Link text
+Anchor link 2:<a title="bananas" href="../logo-240x60.gif">Link text</a>
+Anchor + ext. img:<a title="bananas" href="../logo-240x60.gif"></a>
+Ext. anchor + img:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif" />
+EXPECTED;
+        $this->assertSame($expected, strip_pluginfile_content($source));
+    }
+
 }

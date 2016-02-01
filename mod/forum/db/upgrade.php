@@ -112,5 +112,47 @@ function xmldb_forum_upgrade($oldversion) {
     // Moodle v2.6.0 release upgrade line.
     // Put any upgrade step following this.
 
+    if ($oldversion < 2013110501) {
+
+        // Incorrect values that need to be replaced.
+        $replacements = array(
+            11 => 20,
+            12 => 50,
+            13 => 100
+        );
+
+        // Run the replacements.
+        foreach ($replacements as $old => $new) {
+            $DB->set_field('forum', 'maxattachments', $new, array('maxattachments' => $old));
+        }
+
+        // Forum savepoint reached.
+        upgrade_mod_savepoint(true, 2013110501, 'forum');
+    }
+
+    if ($oldversion < 2013110502) {
+        // Find records with multiple userid/postid combinations and find the lowest ID.
+        // Later we will remove all those which don't match this ID.
+        $sql = "
+            SELECT MIN(id) as lowid, userid, postid
+            FROM {forum_read}
+            GROUP BY userid, postid
+            HAVING COUNT(id) > 1";
+
+        if ($duplicatedrows = $DB->get_recordset_sql($sql)) {
+            foreach ($duplicatedrows as $row) {
+                $DB->delete_records_select('forum_read', 'userid = ? AND postid = ? AND id <> ?', array(
+                    $row->userid,
+                    $row->postid,
+                    $row->lowid,
+                ));
+            }
+        }
+        $duplicatedrows->close();
+
+        // Forum savepoint reached.
+        upgrade_mod_savepoint(true, 2013110502, 'forum');
+    }
+
     return true;
 }

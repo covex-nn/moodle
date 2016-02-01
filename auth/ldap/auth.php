@@ -551,7 +551,7 @@ class auth_plugin_ldap extends auth_plugin_base {
             print_error('auth_ldap_create_error', 'auth_ldap');
         }
 
-        $user->id = user_create_user($user, false);
+        $user->id = user_create_user($user, false, false);
 
         // Save any custom profile field information
         profile_save_data($user);
@@ -563,6 +563,8 @@ class auth_plugin_ldap extends auth_plugin_base {
         update_internal_user_password($user, $plainslashedpassword);
 
         $user = $DB->get_record('user', array('id'=>$user->id));
+
+        \core\event\user_created::create_from_userid($user->id)->trigger();
 
         if (! send_confirmation_email($user)) {
             print_error('noemail', 'auth_ldap');
@@ -602,11 +604,11 @@ class auth_plugin_ldap extends auth_plugin_base {
         $user = get_complete_user_data('username', $username);
 
         if (!empty($user)) {
-            if ($user->confirmed) {
-                return AUTH_CONFIRM_ALREADY;
-
-            } else if ($user->auth != $this->authtype) {
+            if ($user->auth != $this->authtype) {
                 return AUTH_CONFIRM_ERROR;
+
+            } else if ($user->secret == $confirmsecret && $user->confirmed) {
+                return AUTH_CONFIRM_ALREADY;
 
             } else if ($user->secret == $confirmsecret) {   // They have provided the secret key to get in
                 if (!$this->user_activate($username)) {
@@ -616,7 +618,6 @@ class auth_plugin_ldap extends auth_plugin_base {
                 if ($user->firstaccess == 0) {
                     $user->firstaccess = time();
                 }
-                require_once($CFG->dirroot.'/user/lib.php');
                 user_update_user($user, false);
                 return AUTH_CONFIRM_OK;
             }
@@ -736,6 +737,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                     do {
                         $value = ldap_get_values_len($ldapconnection, $entry, $this->config->user_attribute);
                         $value = core_text::convert($value[0], $this->config->ldapencoding, 'utf-8');
+                        $value = trim($value);
                         $this->ldap_bulk_insert($value);
                     } while ($entry = ldap_next_entry($ldapconnection, $entry));
                 }
@@ -945,6 +947,9 @@ class auth_plugin_ldap extends auth_plugin_base {
                 if (empty($user->lang)) {
                     $user->lang = $CFG->lang;
                 }
+                if (empty($user->calendartype)) {
+                    $user->calendartype = $CFG->calendartype;
+                }
 
                 $id = user_create_user($user, false);
                 echo "\t"; print_string('auth_dbinsertuser', 'auth_db', array('name'=>$user->username, 'id'=>$id)); echo "\n";
@@ -1025,7 +1030,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                         }
                     }
                 }
-                user_update_user($newuser, false);
+                user_update_user($newuser, false, false);
             }
         } else {
             return false;
@@ -1180,6 +1185,7 @@ class auth_plugin_ldap extends auth_plugin_base {
             return false;
         }
 
+        $success = true;
         $user_info_result = ldap_read($ldapconnection, $user_dn, '(objectClass=*)', $search_attribs);
         if ($user_info_result) {
             $user_entry = ldap_get_entries_moodle($ldapconnection, $user_info_result);
@@ -1234,8 +1240,10 @@ class auth_plugin_ldap extends auth_plugin_base {
                             if ($nuvalue !== $ldapvalue) {
                                 // This might fail due to schema validation
                                 if (@ldap_modify($ldapconnection, $user_dn, array($ldapkey => $nuvalue))) {
+                                    $changed = true;
                                     continue;
                                 } else {
+                                    $success = false;
                                     error_log($this->errorlogtag.get_string ('updateremfail', 'auth_ldap',
                                                                              array('errno'=>ldap_errno($ldapconnection),
                                                                                    'errstring'=>ldap_err2str(ldap_errno($ldapconnection)),
@@ -1254,6 +1262,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                                     $changed = true;
                                     continue;
                                 } else {
+                                    $success = false;
                                     error_log($this->errorlogtag.get_string ('updateremfail', 'auth_ldap',
                                                                              array('errno'=>ldap_errno($ldapconnection),
                                                                                    'errstring'=>ldap_err2str(ldap_errno($ldapconnection)),
@@ -1271,6 +1280,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                                     $changed = true;
                                     continue;
                                 } else {
+                                    $success = false;
                                     error_log($this->errorlogtag.get_string ('updateremfail', 'auth_ldap',
                                                                              array('errno'=>ldap_errno($ldapconnection),
                                                                                    'errstring'=>ldap_err2str(ldap_errno($ldapconnection)),
@@ -1284,6 +1294,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                     }
 
                     if ($ambiguous and !$changed) {
+                        $success = false;
                         error_log($this->errorlogtag.get_string ('updateremfailamb', 'auth_ldap',
                                                                  array('key'=>$key,
                                                                        'ouvalue'=>$ouvalue,
@@ -1293,12 +1304,11 @@ class auth_plugin_ldap extends auth_plugin_base {
             }
         } else {
             error_log($this->errorlogtag.get_string ('usernotfound', 'auth_ldap'));
-            $this->ldap_close();
-            return false;
+            $success = false;
         }
 
         $this->ldap_close();
-        return true;
+        return $success;
 
     }
 
@@ -1527,6 +1537,7 @@ class auth_plugin_ldap extends auth_plugin_base {
             array_push($contexts, $this->config->create_context);
         }
 
+        $ldap_cookie = '';
         $ldap_pagedresults = ldap_paged_results_supported($this->config->ldap_version);
         foreach ($contexts as $context) {
             $context = trim($context);
@@ -1638,7 +1649,8 @@ class auth_plugin_ldap extends auth_plugin_base {
                                       $_SERVER['HTTP_REFERER'] != $CFG->wwwroot &&
                                       $_SERVER['HTTP_REFERER'] != $CFG->wwwroot.'/' &&
                                       $_SERVER['HTTP_REFERER'] != $CFG->httpswwwroot.'/login/' &&
-                                      $_SERVER['HTTP_REFERER'] != $CFG->httpswwwroot.'/login/index.php')
+                                      $_SERVER['HTTP_REFERER'] != $CFG->httpswwwroot.'/login/index.php' &&
+                                      clean_param($_SERVER['HTTP_REFERER'], PARAM_LOCALURL) != '')
                     ? $_SERVER['HTTP_REFERER'] : NULL;
             }
 

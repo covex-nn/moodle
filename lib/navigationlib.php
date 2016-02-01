@@ -1001,6 +1001,8 @@ class global_navigation extends navigation_node {
     protected $expansionlimit = 0;
     /** @var int userid to allow parent to see child's profile page navigation */
     protected $useridtouseforparentchecks = 0;
+    /** @var cache_session A cache that stores information on expanded courses */
+    protected $cacheexpandcourse = null;
 
     /** Used when loading categories to load all top level categories [parent = 0] **/
     const LOAD_ROOT_CATEGORIES = 0;
@@ -1165,7 +1167,15 @@ class global_navigation extends navigation_node {
                 // course node and not populate it.
 
                 // Not enrolled, can't view, and hasn't switched roles
-                if (!can_access_course($course)) {
+                if (!can_access_course($course, null, '', true)) {
+                    if ($coursenode->isexpandable === true) {
+                        // Obviously the situation has changed, update the cache and adjust the node.
+                        // This occurs if the user access to a course has been revoked (one way or another) after
+                        // initially logging in for this session.
+                        $this->get_expand_course_cache()->set($course->id, 1);
+                        $coursenode->isexpandable = true;
+                        $coursenode->nodetype = self::NODETYPE_BRANCH;
+                    }
                     // Very ugly hack - do not force "parents" to enrol into course their child is enrolled in,
                     // this hack has been propagated from user/view.php to display the navigation node. (MDL-25805)
                     if (!$this->current_user_is_parent_role()) {
@@ -1173,6 +1183,13 @@ class global_navigation extends navigation_node {
                         $canviewcourseprofile = false;
                         break;
                     }
+                } else if ($coursenode->isexpandable === false) {
+                    // Obviously the situation has changed, update the cache and adjust the node.
+                    // This occurs if the user has been granted access to a course (one way or another) after initially
+                    // logging in for this session.
+                    $this->get_expand_course_cache()->set($course->id, 1);
+                    $coursenode->isexpandable = true;
+                    $coursenode->nodetype = self::NODETYPE_BRANCH;
                 }
 
                 // Add the essentials such as reports etc...
@@ -1211,7 +1228,7 @@ class global_navigation extends navigation_node {
 
                 // If the user is not enrolled then we only want to show the
                 // course node and not populate it.
-                if (!can_access_course($course)) {
+                if (!can_access_course($course, null, '', true)) {
                     $coursenode->make_active();
                     $canviewcourseprofile = false;
                     break;
@@ -1250,7 +1267,7 @@ class global_navigation extends navigation_node {
 
                 // If the user is not enrolled then we only want to show the
                 // course node and not populate it.
-                if (!can_access_course($course)) {
+                if (!can_access_course($course, null, '', true)) {
                     $coursenode->make_active();
                     $canviewcourseprofile = false;
                     break;
@@ -2068,7 +2085,7 @@ class global_navigation extends navigation_node {
         $featuresfunc = $cm->modname.'_supports';
         if (function_exists($featuresfunc) && $featuresfunc(FEATURE_ADVANCED_GRADING)) {
             require_once($CFG->dirroot.'/grade/grading/lib.php');
-            $gradingman = get_grading_manager($cm->context, $cm->modname);
+            $gradingman = get_grading_manager($cm->context,  'mod_'.$cm->modname);
             $gradingman->extend_navigation($this, $activity);
         }
 
@@ -2228,7 +2245,7 @@ class global_navigation extends navigation_node {
         // Add a node to view the users notes if permitted
         if (!empty($CFG->enablenotes) && has_any_capability(array('moodle/notes:manage', 'moodle/notes:view'), $coursecontext)) {
             $url = new moodle_url('/notes/index.php',array('user'=>$user->id));
-            if ($coursecontext->instanceid) {
+            if ($coursecontext->instanceid != SITEID) {
                 $url->param('course', $coursecontext->instanceid);
             }
             $usernode->add(get_string('notes', 'notes'), $url);
@@ -2258,7 +2275,14 @@ class global_navigation extends navigation_node {
             $userscourses = enrol_get_users_courses($user->id);
             $userscoursesnode = $usernode->add(get_string('courses'));
 
+            $count = 0;
             foreach ($userscourses as $usercourse) {
+                if ($count === (int)$CFG->navcourselimit) {
+                    $url = new moodle_url('/user/profile.php', array('id' => $user->id, 'showallcourses' => 1));
+                    $userscoursesnode->add(get_string('showallcourses'), $url);
+                    break;
+                }
+                $count++;
                 $usercoursecontext = context_course::instance($usercourse->id);
                 $usercourseshortname = format_string($usercourse->shortname, true, array('context' => $usercoursecontext));
                 $usercoursenode = $userscoursesnode->add($usercourseshortname, new moodle_url('/user/view.php', array('id'=>$user->id, 'course'=>$usercourse->id)), self::TYPE_CONTAINER);
@@ -2285,7 +2309,7 @@ class global_navigation extends navigation_node {
                     $usercoursenode->add(get_string('notes', 'notes'), $url, self::TYPE_SETTING);
                 }
 
-                if (can_access_course($usercourse, $user->id)) {
+                if (can_access_course($usercourse, $user->id, '', true)) {
                     $usercoursenode->add(get_string('entercourse'), new moodle_url('/course/view.php', array('id'=>$usercourse->id)), self::TYPE_SETTING, null, null, new pix_icon('i/course', ''));
                 }
 
@@ -2373,6 +2397,8 @@ class global_navigation extends navigation_node {
         // This is the name that will be shown for the course.
         $coursename = empty($CFG->navshowfullcoursenames) ? $shortname : $fullname;
 
+        // Can the user expand the course to see its content.
+        $canexpandcourse = true;
         if ($issite) {
             $parent = $this;
             $url = null;
@@ -2382,6 +2408,7 @@ class global_navigation extends navigation_node {
         } else if ($coursetype == self::COURSE_CURRENT) {
             $parent = $this->rootnodes['currentcourse'];
             $url = new moodle_url('/course/view.php', array('id'=>$course->id));
+            $canexpandcourse = $this->can_expand_course($course);
         } else if ($coursetype == self::COURSE_MY && !$forcegeneric) {
             if (!empty($CFG->navshowmycoursecategories) && ($parent = $this->rootnodes['mycourses']->find($course->category, self::TYPE_MY_CATEGORY))) {
                 // Nothing to do here the above statement set $parent to the category within mycourses.
@@ -2392,6 +2419,8 @@ class global_navigation extends navigation_node {
         } else {
             $parent = $this->rootnodes['courses'];
             $url = new moodle_url('/course/view.php', array('id'=>$course->id));
+            // They can only expand the course if they can access it.
+            $canexpandcourse = $this->can_expand_course($course);
             if (!empty($course->category) && $this->show_categories($coursetype == self::COURSE_MY)) {
                 if (!$this->is_category_fully_loaded($course->category)) {
                     // We need to load the category structure for this course
@@ -2408,16 +2437,62 @@ class global_navigation extends navigation_node {
         }
 
         $coursenode = $parent->add($coursename, $url, self::TYPE_COURSE, $shortname, $course->id);
-        $coursenode->nodetype = self::NODETYPE_BRANCH;
         $coursenode->hidden = (!$course->visible);
         // We need to decode &amp;'s here as they will have been added by format_string above and attributes will be encoded again
         // later.
         $coursenode->title(str_replace('&amp;', '&', $fullname));
+        if ($canexpandcourse) {
+            // This course can be expanded by the user, make it a branch to make the system aware that its expandable by ajax.
+            $coursenode->nodetype = self::NODETYPE_BRANCH;
+            $coursenode->isexpandable = true;
+        } else {
+            $coursenode->nodetype = self::NODETYPE_LEAF;
+            $coursenode->isexpandable = false;
+        }
         if (!$forcegeneric) {
             $this->addedcourses[$course->id] = $coursenode;
         }
 
         return $coursenode;
+    }
+
+    /**
+     * Returns a cache instance to use for the expand course cache.
+     * @return cache_session
+     */
+    protected function get_expand_course_cache() {
+        if ($this->cacheexpandcourse === null) {
+            $this->cacheexpandcourse = cache::make('core', 'navigation_expandcourse');
+        }
+        return $this->cacheexpandcourse;
+    }
+
+    /**
+     * Checks if a user can expand a course in the navigation.
+     *
+     * We use a cache here because in order to be accurate we need to call can_access_course which is a costly function.
+     * Because this functionality is basic + non-essential and because we lack good event triggering this cache
+     * permits stale data.
+     * In the situation the user is granted access to a course after we've initialised this session cache the cache
+     * will be stale.
+     * It is brought up to date in only one of two ways.
+     *   1. The user logs out and in again.
+     *   2. The user browses to the course they've just being given access to.
+     *
+     * Really all this controls is whether the node is shown as expandable or not. It is uber un-important.
+     *
+     * @param stdClass $course
+     * @return bool
+     */
+    protected function can_expand_course($course) {
+        $cache = $this->get_expand_course_cache();
+        $canexpand = $cache->get($course->id);
+        if ($canexpand === false) {
+            $canexpand = isloggedin() && can_access_course($course, null, '', true);
+            $canexpand = (int)$canexpand;
+            $cache->set($course->id, $canexpand);
+        }
+        return ($canexpand === 1);
     }
 
     /**
@@ -2748,6 +2823,9 @@ class global_navigation_for_ajax extends global_navigation {
         $this->rootnodes['site']    = $this->add_course($SITE);
         $this->rootnodes['mycourses'] = $this->add(get_string('mycourses'), new moodle_url('/my'), self::TYPE_ROOTNODE, null, 'mycourses');
         $this->rootnodes['courses'] = $this->add(get_string('courses'), null, self::TYPE_ROOTNODE, null, 'courses');
+        // The courses branch is always displayed, and is always expandable (although may be empty).
+        // This mimicks what is done during {@link global_navigation::initialise()}.
+        $this->rootnodes['courses']->isexpandable = true;
 
         // Branchtype will be one of navigation_node::TYPE_*
         switch ($this->branchtype) {
@@ -2766,6 +2844,12 @@ class global_navigation_for_ajax extends global_navigation {
                 break;
             case self::TYPE_COURSE :
                 $course = $DB->get_record('course', array('id' => $this->instanceid), '*', MUST_EXIST);
+                if (!can_access_course($course, null, '', true)) {
+                    // Thats OK all courses are expandable by default. We don't need to actually expand it we can just
+                    // add the course node and break. This leads to an empty node.
+                    $this->add_course($course);
+                    break;
+                }
                 require_course_login($course, true, null, false, true);
                 $this->page->set_context(context_course::instance($course->id));
                 $coursenode = $this->add_course($course);
@@ -2796,10 +2880,11 @@ class global_navigation_for_ajax extends global_navigation {
                 require_course_login($course, true, $cm, false, true);
                 $this->page->set_context(context_module::instance($cm->id));
                 $coursenode = $this->load_course($course);
-                if ($course->id != $SITE->id) {
-                    $this->load_course_sections($course, $coursenode, null, $cm);
+                $this->load_course_sections($course, $coursenode, null, $cm);
+                $activitynode = $coursenode->find($cm->id, self::TYPE_ACTIVITY);
+                if ($activitynode) {
+                    $modulenode = $this->load_activity($cm, $course, $activitynode);
                 }
-                $modulenode = $this->load_activity($cm, $course, $coursenode->find($cm->id, self::TYPE_ACTIVITY));
                 break;
             default:
                 throw new Exception('Unknown type');
@@ -3153,7 +3238,7 @@ class navbar extends navigation_node {
             }
             $categories[] = $categorynode;
         }
-        if (is_enrolled(context_course::instance($this->page->course->id))) {
+        if (is_enrolled(context_course::instance($this->page->course->id), null, '', true)) {
             $courses = $this->page->navigation->get('mycourses');
         } else {
             $courses = $this->page->navigation->get('courses');
@@ -3887,7 +3972,7 @@ class settings_navigation extends navigation_node {
         $featuresfunc = $this->page->activityname.'_supports';
         if (function_exists($featuresfunc) && $featuresfunc(FEATURE_ADVANCED_GRADING) && has_capability('moodle/grade:managegradingforms', $this->page->cm->context)) {
             require_once($CFG->dirroot.'/grade/grading/lib.php');
-            $gradingman = get_grading_manager($this->page->cm->context, $this->page->activityname);
+            $gradingman = get_grading_manager($this->page->cm->context, 'mod_'.$this->page->activityname);
             $gradingman->extend_settings_navigation($this, $modulenode);
         }
 
@@ -4043,14 +4128,22 @@ class settings_navigation extends navigation_node {
                 }
             } else {
                 $canviewusercourse = has_capability('moodle/user:viewdetails', $coursecontext);
-                $userisenrolled = is_enrolled($coursecontext, $user->id);
+                $userisenrolled = is_enrolled($coursecontext, $user->id, '', true);
                 if ((!$canviewusercourse && !$canviewuser) || !$userisenrolled) {
                     return false;
                 }
                 $canaccessallgroups = has_capability('moodle/site:accessallgroups', $coursecontext);
                 if (!$canaccessallgroups && groups_get_course_groupmode($course) == SEPARATEGROUPS) {
-                    // If groups are in use, make sure we can see that group
-                    return false;
+                    // If groups are in use, make sure we can see that group (MDL-45874).
+                    if ($courseid == $this->page->course->id) {
+                        $mygroups = get_fast_modinfo($this->page->course)->groups;
+                    } else {
+                        $mygroups = groups_get_user_groups($courseid);
+                    }
+                    $usergroups = groups_get_user_groups($courseid, $userid);
+                    if (!array_intersect_key($mygroups[0], $usergroups[0])) {
+                        return false;
+                    }
                 }
             }
         }
@@ -4488,6 +4581,7 @@ class settings_navigation_ajax extends settings_navigation {
         if ($this->initialised || during_initial_install()) {
             return false;
         }
+        $this->context = $this->page->context;
         $this->load_administration_settings();
 
         // Check if local plugins is adding node to site admin.

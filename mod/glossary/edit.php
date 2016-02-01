@@ -40,7 +40,7 @@ if ($id) { // if entry is specified
 
     $ineditperiod = ((time() - $entry->timecreated <  $CFG->maxeditingtime) || $glossary->editalways);
     if (!has_capability('mod/glossary:manageentries', $context) and !($entry->userid == $USER->id and ($ineditperiod and has_capability('mod/glossary:write', $context)))) {
-        if ($USER->id != $fromdb->userid) {
+        if ($USER->id != $entry->userid) {
             print_error('errcannoteditothers', 'glossary', "view.php?id=$cm->id&amp;mode=entry&amp;hook=$id");
         } elseif (!$ineditperiod) {
             print_error('erredittimeexpired', 'glossary', "view.php?id=$cm->id&amp;mode=entry&amp;hook=$id");
@@ -182,7 +182,7 @@ if (!empty($id)) {
     $PAGE->navbar->add(get_string('edit'));
 }
 
-$PAGE->set_title(format_string($glossary->name));
+$PAGE->set_title($glossary->name);
 $PAGE->set_heading($course->fullname);
 echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($glossary->name), 2);

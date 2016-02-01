@@ -653,12 +653,20 @@ class core_plugin_manager {
             return 'git';
         }
 
+        if (is_file($pluginroot.'/.git')) {
+            return 'git-submodule';
+        }
+
         if (is_dir($pluginroot.'/CVS')) {
             return 'cvs';
         }
 
         if (is_dir($pluginroot.'/.svn')) {
             return 'svn';
+        }
+
+        if (is_dir($pluginroot.'/.hg')) {
+            return 'mercurial';
         }
 
         return false;

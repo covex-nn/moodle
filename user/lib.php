@@ -30,14 +30,15 @@
  *
  * @param stdClass $user user to create
  * @param bool $updatepassword if true, authentication plugin will update password.
+ * @param bool $triggerevent set false if user_created event should not be triggred.
  * @return int id of the newly created user
  */
-function user_create_user($user, $updatepassword = true) {
-    global $DB;
+function user_create_user($user, $updatepassword = true, $triggerevent = true) {
+    global $CFG, $DB;
 
     // Set the timecreate field to the current time.
     if (!is_object($user)) {
-            $user = (object)$user;
+        $user = (object) $user;
     }
 
     // Check username.
@@ -61,6 +62,16 @@ function user_create_user($user, $updatepassword = true) {
         unset($user->password);
     }
 
+    // Make sure calendartype, if set, is valid.
+    if (!empty($user->calendartype)) {
+        $availablecalendartypes = \core_calendar\type_factory::get_list_of_calendar_types();
+        if (empty($availablecalendartypes[$user->calendartype])) {
+            $user->calendartype = $CFG->calendartype;
+        }
+    } else {
+        $user->calendartype = $CFG->calendartype;
+    }
+
     $user->timecreated = time();
     $user->timemodified = $user->timecreated;
 
@@ -78,14 +89,10 @@ function user_create_user($user, $updatepassword = true) {
         $authplugin->user_update_password($newuser, $userpassword);
     }
 
-    // Trigger event.
-    $event = \core\event\user_created::create(
-            array(
-                'objectid' => $newuserid,
-                'context' => $usercontext
-                )
-            );
-    $event->trigger();
+    // Trigger event If required.
+    if ($triggerevent) {
+        \core\event\user_created::create_from_userid($newuserid)->trigger();
+    }
 
     return $newuserid;
 }
@@ -95,13 +102,14 @@ function user_create_user($user, $updatepassword = true) {
  *
  * @param stdClass $user the user to update
  * @param bool $updatepassword if true, authentication plugin will update password.
+ * @param bool $triggerevent set false if user_updated event should not be triggred.
  */
-function user_update_user($user, $updatepassword = true) {
+function user_update_user($user, $updatepassword = true, $triggerevent = true) {
     global $DB;
 
     // set the timecreate field to the current time
     if (!is_object($user)) {
-            $user = (object)$user;
+        $user = (object) $user;
     }
 
     //check username
@@ -127,6 +135,18 @@ function user_update_user($user, $updatepassword = true) {
         unset($user->password);
     }
 
+    // Make sure calendartype, if set, is valid.
+    if (!empty($user->calendartype)) {
+        $availablecalendartypes = \core_calendar\type_factory::get_list_of_calendar_types();
+        // If it doesn't exist, then unset this value, we do not want to update the user's value.
+        if (empty($availablecalendartypes[$user->calendartype])) {
+            unset($user->calendartype);
+        }
+    } else {
+        // Unset this variable, must be an empty string, which we do not want to update the calendartype to.
+        unset($user->calendartype);
+    }
+
     $user->timemodified = time();
     $DB->update_record('user', $user);
 
@@ -142,15 +162,10 @@ function user_update_user($user, $updatepassword = true) {
             }
         }
     }
-
-    // Trigger event.
-    $event = \core\event\user_updated::create(
-            array(
-                'objectid' => $user->id,
-                'context' => context_user::instance($user->id)
-                )
-            );
-    $event->trigger();
+    // Trigger event if required.
+    if ($triggerevent) {
+        \core\event\user_updated::create_from_userid($user->id)->trigger();
+    }
 }
 
 /**
@@ -518,7 +533,7 @@ function user_get_user_details_courses($user) {
     } else {
         // Try through course profile.
         foreach ($courses as $course) {
-            if ($can_view_user_details_cap($user, $course) || ($user->id == $USER->id) || has_coursecontact_role($user->id)) {
+            if (can_view_user_details_cap($user, $course) || ($user->id == $USER->id) || has_coursecontact_role($user->id)) {
                 $userdetails = user_get_user_details($user, $course);
             }
         }

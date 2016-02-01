@@ -24,6 +24,9 @@
 
 class theme_bootstrapbase_core_renderer extends core_renderer {
 
+    /** @var custom_menu_item language The language menu if created */
+    protected $language = null;
+
     /*
      * This renders a notification message.
      * Uses bootstrap compatible html.
@@ -32,7 +35,7 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
         $message = clean_text($message);
         $type = '';
 
-        if ($classes == 'notifyproblem') {
+        if (($classes == 'notifyproblem') || ($classes == 'notifytiny')) {
             $type = 'alert alert-error';
         }
         if ($classes == 'notifysuccess') {
@@ -53,12 +56,15 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
      */
     public function navbar() {
         $items = $this->page->navbar->get_items();
+        if (empty($items)) {
+            return '';
+        }
         $breadcrumbs = array();
         foreach ($items as $item) {
             $item->hideicon = true;
             $breadcrumbs[] = $this->render($item);
         }
-        $divider = '<span class="divider">/</span>';
+        $divider = '<span class="divider">'.get_separator().'</span>';
         $list_items = '<li>'.join(" $divider</li><li>", $breadcrumbs).'</li>';
         $title = '<span class="accesshide">'.get_string('pagepath').'</span>';
         return $title . "<ul class=\"breadcrumb\">$list_items</ul>";
@@ -72,8 +78,8 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
     public function custom_menu($custommenuitems = '') {
         global $CFG;
 
-        if (!empty($CFG->custommenuitems)) {
-            $custommenuitems .= $CFG->custommenuitems;
+        if (empty($custommenuitems) && !empty($CFG->custommenuitems)) {
+            $custommenuitems = $CFG->custommenuitems;
         }
         $custommenu = new custom_menu($custommenuitems, current_language());
         return $this->render_custom_menu($custommenu);
@@ -102,9 +108,16 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
         }
 
         if ($addlangmenu) {
-            $language = $menu->add(get_string('language'), new moodle_url('#'), get_string('language'), 10000);
+            $strlang =  get_string('language');
+            $currentlang = current_language();
+            if (isset($langs[$currentlang])) {
+                $currentlang = $langs[$currentlang];
+            } else {
+                $currentlang = $strlang;
+            }
+            $this->language = $menu->add($currentlang, new moodle_url('#'), $strlang, 10000);
             foreach ($langs as $langtype => $langname) {
-                $language->add($langname, new moodle_url($this->page->url, array('lang' => $langtype)), $langname);
+                $this->language->add($langname, new moodle_url($this->page->url, array('lang' => $langtype)), $langname);
             }
         }
 
@@ -126,12 +139,15 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
         if ($menunode->has_children()) {
 
             if ($level == 1) {
-                $dropdowntype = 'dropdown';
+                $class = 'dropdown';
             } else {
-                $dropdowntype = 'dropdown-submenu';
+                $class = 'dropdown-submenu';
             }
 
-            $content = html_writer::start_tag('li', array('class'=>$dropdowntype));
+            if ($menunode === $this->language) {
+                $class .= ' langmenu';
+            }
+            $content = html_writer::start_tag('li', array('class' => $class));
             // If the child has menus render it as a sub menu.
             $submenucount++;
             if ($menunode->get_url() !== null) {
@@ -193,7 +209,7 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
      * @return string HTML fragment
      */
     protected function render_tabobject(tabobject $tab) {
-        if ($tab->selected or $tab->activated) {
+        if (($tab->selected and (!$tab->linkedwhenselected)) or $tab->activated) {
             return html_writer::tag('li', html_writer::tag('a', $tab->text), array('class' => 'active'));
         } else if ($tab->inactive) {
             return html_writer::tag('li', html_writer::tag('a', $tab->text), array('class' => 'disabled'));
@@ -204,7 +220,8 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
             } else {
                 $link = html_writer::link($tab->link, $tab->text, array('title' => $tab->title));
             }
-            return html_writer::tag('li', $link);
+            $params = $tab->selected ? array('class' => 'active') : null;
+            return html_writer::tag('li', $link, $params);
         }
     }
 }

@@ -384,6 +384,10 @@ class auth_plugin_db extends auth_plugin_base {
                     if ($old_user = $DB->get_record('user', array('username'=>$username, 'deleted'=>0, 'suspended'=>1, 'mnethostid'=>$CFG->mnet_localhost_id, 'auth'=>$this->authtype))) {
                         $DB->set_field('user', 'suspended', 0, array('id'=>$old_user->id));
                         $trace->output(get_string('auth_dbreviveduser', 'auth_db', array('name'=>$username, 'id'=>$old_user->id)), 1);
+
+                        // Trigger user_updated event.
+                        \core\event\user_updated::create_from_userid($old_user->id)->trigger();
+
                         continue;
                     }
                 }
@@ -399,6 +403,9 @@ class auth_plugin_db extends auth_plugin_base {
                 if (empty($user->lang)) {
                     $user->lang = $CFG->lang;
                 }
+                if (empty($user->calendartype)) {
+                    $user->calendartype = $CFG->calendartype;
+                }
                 $user->timecreated = time();
                 $user->timemodified = $user->timecreated;
                 if ($collision = $DB->get_record_select('user', "username = :username AND mnethostid = :mnethostid AND auth <> :auth", array('username'=>$user->username, 'mnethostid'=>$CFG->mnet_localhost_id, 'auth'=>$this->authtype), 'id,username,auth')) {
@@ -407,6 +414,10 @@ class auth_plugin_db extends auth_plugin_base {
                 }
                 try {
                     $id = $DB->insert_record ('user', $user); // it is truly a new user
+
+                    // Trigger user_created event.
+                    \core\event\user_created::create_from_userid($id)->trigger();
+
                     $trace->output(get_string('auth_dbinsertuser', 'auth_db', array('name'=>$user->username, 'id'=>$id)), 1);
                 } catch (moodle_exception $e) {
                     $trace->output(get_string('auth_dbinsertusererror', 'auth_db', $user->username), 1);
@@ -544,6 +555,9 @@ class auth_plugin_db extends auth_plugin_base {
         }
         if ($updated) {
             $DB->set_field('user', 'timemodified', time(), array('id'=>$userid));
+
+            // Trigger user_updated event.
+            \core\event\user_updated::create_from_userid($userid)->trigger();
         }
         return $DB->get_record('user', array('id'=>$userid, 'deleted'=>0));
     }

@@ -775,10 +775,9 @@ class auth_plugin_mnet extends auth_plugin_base {
                 u.mnethostid = ?
                 AND l.id > ?
                 AND l.course IS NOT NULL
-            ORDER by l.id ASC
-            LIMIT 500";
+             ORDER by l.id ASC";
 
-            $mnethostlogs = $DB->get_records_sql($mnethostlogssql, array($mnethostid, $mnet_request->response['last log id']));
+            $mnethostlogs = $DB->get_records_sql($mnethostlogssql, array($mnethostid, $mnet_request->response['last log id']), 0, 500);
 
             if ($mnethostlogs == false) {
                 continue;
@@ -941,7 +940,6 @@ class auth_plugin_mnet extends auth_plugin_base {
         // run the keepalive client
         $this->keepalive_client();
 
-        // admin/cron.php should have run srand for us
         $random100 = rand(0,100);
         if ($random100 < 10) {     // Approximately 10% of the time.
             // nuke olden sessions

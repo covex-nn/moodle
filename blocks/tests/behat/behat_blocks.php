@@ -17,7 +17,7 @@
 /**
  * Steps definitions related with blocks.
  *
- * @package   core
+ * @package   core_block
  * @category  test
  * @copyright 2012 David Monllaó
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -32,7 +32,7 @@ use Behat\Behat\Context\Step\Given as Given;
 /**
  * Blocks management steps definitions.
  *
- * @package    core
+ * @package    core_block
  * @category   test
  * @copyright  2012 David Monllaó
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -83,13 +83,13 @@ class behat_blocks extends behat_base {
     public function i_open_the_blocks_action_menu($blockname) {
 
         if (!$this->running_javascript()) {
-            throw new DriverException('Blocks action menu not available when Javascript is disabled');
+            // Action menu does not need to be open if Javascript is off.
+            return;
         }
 
         // If it is already opened we do nothing.
-        $blocknode = $this->get_block_node($blockname);
-        $classes = array_flip(explode(' ', $blocknode->getAttribute('class')));
-        if (!empty($classes['action-menu-shown'])) {
+        $blocknode = $this->get_text_selector_node('block', $blockname);
+        if ($blocknode->hasClass('action-menu-shown')) {
             return;
         }
 
@@ -97,18 +97,18 @@ class behat_blocks extends behat_base {
     }
 
     /**
-     * Returns the DOM node of the block from <div>.
+     * Clicks on Configure block for specified block. Page must be in editing mode.
      *
-     * @throws ElementNotFoundException Thrown by behat_base::find
-     * @param string $blockname The block name
-     * @return NodeElement
+     * Argument block_name may be either the name of the block or CSS class of the block.
+     *
+     * @Given /^I configure the "(?P<block_name_string>(?:[^"]|\\")*)" block$/
+     * @param string $blockname
      */
-    protected function get_block_node($blockname) {
-
-        $blockname = $this->getSession()->getSelectorsHandler()->xpathLiteral($blockname);
-        $xpath = "//div[contains(concat(' ', normalize-space(@class), ' '), ' block ')][contains(., $blockname)]";
-
-        return $this->find('xpath', $xpath);
+    public function i_configure_the_block($blockname) {
+        // Note that since $blockname may be either block name or CSS class, we can not use the exact label of "Configure" link.
+        return array(
+            new Given('I open the "'.$this->escape($blockname).'" blocks action menu'),
+            new Given('I click on "Configure" "link" in the "'.$this->escape($blockname).'" "block"')
+        );
     }
-
 }

@@ -45,7 +45,7 @@
         }
     }
 
-    $PAGE->set_title(format_string($choice->name));
+    $PAGE->set_title($choice->name);
     $PAGE->set_heading($course->fullname);
 
     // Mark viewed by user (if required)
@@ -69,11 +69,11 @@
             choice_user_submit_response($answer, $choice, $USER->id, $course, $cm);
         }
         echo $OUTPUT->header();
-        echo $OUTPUT->heading($choice->name, 2, null);
+        echo $OUTPUT->heading(format_string($choice->name), 2, null);
         echo $OUTPUT->notification(get_string('choicesaved', 'choice'),'notifysuccess');
     } else {
         echo $OUTPUT->header();
-        echo $OUTPUT->heading($choice->name, 2, null);
+        echo $OUTPUT->heading(format_string($choice->name), 2, null);
     }
 
 
@@ -150,7 +150,7 @@
         } else if (!is_enrolled($context)) {
             // Only people enrolled can make a choice
             $SESSION->wantsurl = qualified_me();
-            $SESSION->enrolcancel = (!empty($_SERVER['HTTP_REFERER'])) ? $_SERVER['HTTP_REFERER'] : '';
+            $SESSION->enrolcancel = clean_param($_SERVER['HTTP_REFERER'], PARAM_LOCALURL);
 
             $coursecontext = context_course::instance($course->id);
             $courseshortname = format_string($course->shortname, true, array('context' => $coursecontext));

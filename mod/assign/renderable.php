@@ -65,17 +65,23 @@ class assign_gradingmessage implements renderable {
     public $message = '';
     /** @var int $coursemoduleid */
     public $coursemoduleid = 0;
+    /** @var int $gradingerror should be set true if there was a problem grading */
+    public $gradingerror = null;
 
     /**
      * Constructor
      * @param string $heading This is the heading to display
      * @param string $message This is the message to display
+     * @param bool $gradingerror Set to true to display the message as an error.
      * @param int $coursemoduleid
+     * @param int $page This is the current quick grading page
      */
-    public function __construct($heading, $message, $coursemoduleid) {
+    public function __construct($heading, $message, $coursemoduleid, $gradingerror = false, $page = null) {
         $this->heading = $heading;
         $this->message = $message;
         $this->coursemoduleid = $coursemoduleid;
+        $this->gradingerror = $gradingerror;
+        $this->page = $page;
     }
 
 }
@@ -476,22 +482,26 @@ class assign_submission_status implements renderable {
  */
 class assign_attempt_history implements renderable {
 
-    /** @var array submissions */
+    /** @var array submissions - The list of previous attempts */
     public $submissions = array();
-    /** @var array grades */
+    /** @var array grades - The grades for the previous attempts */
     public $grades = array();
-    /** @var array submissionplugins */
+    /** @var array submissionplugins - The list of submission plugins to render the previous attempts */
     public $submissionplugins = array();
-    /** @var array feedbackplugins */
+    /** @var array feedbackplugins - The list of feedback plugins to render the previous attempts */
     public $feedbackplugins = array();
-    /** @var int coursemoduleid */
+    /** @var int coursemoduleid - The cmid for the assignment */
     public $coursemoduleid = 0;
-    /** @var string returnaction */
+    /** @var string returnaction - The action for the next page. */
     public $returnaction = '';
-    /** @var string returnparams */
+    /** @var string returnparams - The params for the next page. */
     public $returnparams = array();
-    /** @var bool cangrade */
+    /** @var bool cangrade - Does this user have grade capability? */
     public $cangrade = false;
+    /** @var string useridlistid - Id of the useridlist stored in cache, this plus rownum determines the userid */
+    public $useridlistid = 0;
+    /** @var int rownum - The rownum of the user in the useridlistid - this plus useridlistid determines the userid */
+    public $rownum = 0;
 
     /**
      * Constructor
@@ -504,6 +514,8 @@ class assign_attempt_history implements renderable {
      * @param string $returnaction
      * @param array $returnparams
      * @param bool $cangrade
+     * @param int $useridlistid
+     * @param int $rownum
      */
     public function __construct($submissions,
                                 $grades,
@@ -512,7 +524,9 @@ class assign_attempt_history implements renderable {
                                 $coursemoduleid,
                                 $returnaction,
                                 $returnparams,
-                                $cangrade) {
+                                $cangrade,
+                                $useridlistid,
+                                $rownum) {
         $this->submissions = $submissions;
         $this->grades = $grades;
         $this->submissionplugins = $submissionplugins;
@@ -521,6 +535,8 @@ class assign_attempt_history implements renderable {
         $this->returnaction = $returnaction;
         $this->returnparams = $returnparams;
         $this->cangrade = $cangrade;
+        $this->useridlistid = $useridlistid;
+        $this->rownum = $rownum;
     }
 }
 
@@ -742,26 +758,6 @@ class assign_files implements renderable {
                 $this->portfolioform = $button->to_html(PORTFOLIO_ADD_TEXT_LINK);
             }
 
-        }
-
-        // Plagiarism check if it is enabled.
-        $output = '';
-        if (!empty($CFG->enableplagiarism)) {
-            require_once($CFG->libdir . '/plagiarismlib.php');
-
-            // For plagiarism_get_links.
-            $assignment = new assign($this->context, null, null);
-            foreach ($files as $file) {
-
-                $linkparams = array('userid' => $sid,
-                                    'file' => $file,
-                                    'cmid' => $this->cm->id,
-                                    'course' => $this->course,
-                                    'assignment' => $assignment->get_instance());
-                $output .= plagiarism_get_links($linkparams);
-
-                $output .= '<br />';
-            }
         }
 
         $this->preprocess($this->dir, $filearea, $component);

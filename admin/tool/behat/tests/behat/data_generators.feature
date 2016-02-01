@@ -1,4 +1,4 @@
-@tool @tool_behat @_only_local
+@tool @tool_behat
 Feature: Set up contextual data for tests
   In order to write tests quickly
   As a developer
@@ -90,10 +90,10 @@ Feature: Set up contextual data for tests
     And I expand "Users" node
     And I follow "Permissions"
     And I select "Student (1)" from "Advanced role override"
-    Then the "mod/forum:editanypost" field should match "1" value
+    Then "mod/forum:editanypost" capability has "Allow" permission
     And I press "Cancel"
     And I select "Teacher (1)" from "Advanced role override"
-    And the "mod/forum:replynews" field should match "-1" value
+    And "mod/forum:replynews" capability has "Prevent" permission
     And I press "Cancel"
 
   Scenario: Add course enrolments
@@ -233,3 +233,58 @@ Feature: Set up contextual data for tests
     And the "members" select box should contain "Student 1"
     And I select "Group 2 (1)" from "groups"
     And the "members" select box should contain "Student 2"
+
+  Scenario: Add cohorts and cohort members with data generator
+    Given the following "categories" exist:
+      | name  | category | idnumber |
+      | Cat 1 | 0        | CAT1     |
+    And the following "users" exist:
+      | username | firstname | lastname | email |
+      | student1 | Student | 1 | student1@asd.com |
+      | student2 | Student | 2 | student2@asd.com |
+    And the following "cohorts" exist:
+      | name            | idnumber |
+      | System cohort A | CHSA     |
+    And the following "cohorts" exist:
+      | name                 | idnumber | contextlevel | reference |
+      | System cohort B      | CHSB     | System       |           |
+      | Cohort in category   | CHC      | Category     | CAT1      |
+      | Empty cohort         | CHE      | Category     | CAT1      |
+    And the following "cohort members" exist:
+      | user     | cohort |
+      | student1 | CHSA   |
+      | student2 | CHSB   |
+      | student1 | CHSB   |
+      | student1 | CHC    |
+    When I log in as "admin"
+    And I navigate to "Cohorts" node in "Site administration > Users > Accounts"
+    Then the following should exist in the "cohorts" table:
+      | Name            | Cohort size |
+      | System cohort A | 1           |
+      | System cohort B | 2           |
+    And I should not see "Cohort in category"
+    And I follow "Courses"
+    And I follow "Cat 1"
+    And I follow "Cohorts"
+    And I should not see "System cohort"
+    And the following should exist in the "cohorts" table:
+      | Name               | Cohort size |
+      | Cohort in category | 1           |
+      | Empty cohort       | 0           |
+
+  Scenario: Add grade categories with data generator
+    Given the following "courses" exist:
+      | fullname | shortname |
+      | Course 1 | C1 |
+    And the following "grade categories" exist:
+      | fullname | course |
+      | Grade category 1 | C1|
+    And the following "grade categories" exist:
+      | fullname | course | gradecategory |
+      | Grade sub category 2 | C1 | Grade category 1|
+    When I log in as "admin"
+    And I follow "Courses"
+    And I follow "Course 1"
+    And I navigate to "Grades" node in "Course administration"
+    Then I should see "Grade category 1"
+    And I should see "Grade sub category 2"

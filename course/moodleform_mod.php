@@ -224,8 +224,10 @@ abstract class moodleform_mod extends moodleform {
                 // is changed, maybe someone has completed it now)
                 $mform->getElement('completionunlocked')->setValue(1);
             } else {
-                // Has the element been unlocked?
-                if ($mform->exportValue('unlockcompletion')) {
+                // Has the element been unlocked, either by the button being pressed
+                // in this request, or the field already being set from a previous one?
+                if ($mform->exportValue('unlockcompletion') ||
+                        $mform->exportValue('completionunlocked')) {
                     // Yes, add in warning text and set the hidden variable
                     $mform->insertElementBefore(
                         $mform->createElement('static', 'completedunlocked',
@@ -327,6 +329,14 @@ abstract class moodleform_mod extends moodleform {
             if (!grade_verify_idnumber($data['cmidnumber'], $COURSE->id, $grade_item, $cm)) {
                 $errors['cmidnumber'] = get_string('idnumbertaken');
             }
+        }
+
+        // Ratings: Don't let them select an aggregate type without selecting a scale.
+        // If the user has selected to use ratings but has not chosen a scale or set max points then the form is
+        // invalid. If ratings have been selected then the user must select either a scale or max points.
+        // This matches (horrible) logic in data_preprocessing.
+        if (isset($data['assessed']) && $data['assessed'] > 0 && empty($data['scale'])) {
+            $errors['assessed'] = get_string('scaleselectionrequired', 'rating');
         }
 
         // Completion: Don't let them choose automatic completion without turning
@@ -504,12 +514,13 @@ abstract class moodleform_mod extends moodleform {
         if ($this->_features->groupings or $this->_features->groupmembersonly) {
             //groupings selector - used for normal grouping mode or also when restricting access with groupmembersonly
             $options = array();
-            $options[0] = get_string('none');
             if ($groupings = $DB->get_records('groupings', array('courseid'=>$COURSE->id))) {
                 foreach ($groupings as $grouping) {
                     $options[$grouping->id] = format_string($grouping->name);
                 }
             }
+            core_collator::asort($options);
+            $options = array(0 => get_string('none')) + $options;
             $mform->addElement('select', 'groupingid', get_string('grouping', 'group'), $options);
             $mform->addHelpButton('groupingid', 'grouping', 'group');
         }
@@ -687,6 +698,11 @@ abstract class moodleform_mod extends moodleform {
                 $mform->disabledIf('completionusegrade', 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
                 $mform->addHelpButton('completionusegrade', 'completionusegrade', 'completion');
                 $gotcompletionoptions = true;
+
+                // If using the rating system, there is no grade unless ratings are enabled.
+                if ($this->_features->rating) {
+                    $mform->disabledIf('completionusegrade', 'assessed', 'eq', 0);
+                }
             }
 
             // Automatic completion according to module-specific rules

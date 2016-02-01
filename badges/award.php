@@ -81,6 +81,14 @@ $output = $PAGE->get_renderer('core', 'badges');
 // Roles that can award this badge.
 $acceptedroles = array_keys($badge->criteria[BADGE_CRITERIA_TYPE_MANUAL]->params);
 
+if (empty($acceptedroles)) {
+    echo $OUTPUT->header();
+    $return = html_writer::link(new moodle_url('recipients.php', array('id' => $badge->id)), $strrecipients);
+    echo $OUTPUT->notification(get_string('notacceptedrole', 'badges', $return));
+    echo $OUTPUT->footer();
+    die();
+}
+
 if (count($acceptedroles) > 1) {
     // If there is more than one role that can award a badge, prompt user to make a selection.
     // If it is an admin, include all accepted roles, otherwise only the ones that current user has in this context.
@@ -109,7 +117,7 @@ if (count($acceptedroles) > 1) {
             $pageurl = new moodle_url('/badges/award.php', array('id' => $badgeid));
             $issuerrole = new stdClass();
             $issuerrole->roleid = $role;
-            $roleselect = get_string('selectaward', 'badges') . $OUTPUT->single_select(new moodle_url($pageurl), 'role', $select, $role);
+            $roleselect = get_string('selectaward', 'badges') . $OUTPUT->single_select(new moodle_url($pageurl), 'role', $select, $role, null);
         }
     } else {
         echo $OUTPUT->header();
@@ -120,7 +128,7 @@ if (count($acceptedroles) > 1) {
     }
 } else {
     // User has to be an admin or the one with the required role.
-    $users = get_role_users($acceptedroles[0], $context, false, 'u.id', 'u.id ASC');
+    $users = get_role_users($acceptedroles[0], $context, true, 'u.id', 'u.id ASC');
     $usersids = array_keys($users);
     if (!$isadmin && !in_array($USER->id, $usersids)) {
         echo $OUTPUT->header();

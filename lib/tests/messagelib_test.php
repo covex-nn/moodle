@@ -93,7 +93,7 @@ class core_messagelib_testcase extends advanced_testcase {
         // however mod_quiz doesn't have a data generator.
         // Instead we're going to use backup notifications and give and take away the capability at various levels.
         $assign = $this->getDataGenerator()->create_module('assign', array('course'=>$course->id));
-        $modulecontext = context_module::instance($assign->id);
+        $modulecontext = context_module::instance($assign->cmid);
 
         // Create and enrol a teacher.
         $teacherrole = $DB->get_record('role', array('shortname'=>'editingteacher'), '*', MUST_EXIST);
@@ -121,7 +121,7 @@ class core_messagelib_testcase extends advanced_testcase {
         // They should now be able to see the backup message.
         assign_capability('moodle/site:config', CAP_ALLOW, $teacherrole->id, $modulecontext->id, true);
         accesslib_clear_all_caches_for_unit_testing();
-        $modulecontext = context_module::instance($assign->id);
+        $modulecontext = context_module::instance($assign->cmid);
         $this->assertTrue(has_capability('moodle/site:config', $modulecontext));
 
         $providers = message_get_providers_for_user($teacher->id);
@@ -132,7 +132,7 @@ class core_messagelib_testcase extends advanced_testcase {
         // They should not be able to see the backup message.
         assign_capability('moodle/site:config', CAP_PROHIBIT, $teacherrole->id, $coursecontext->id, true);
         accesslib_clear_all_caches_for_unit_testing();
-        $modulecontext = context_module::instance($assign->id);
+        $modulecontext = context_module::instance($assign->cmid);
         $this->assertFalse(has_capability('moodle/site:config', $modulecontext));
 
         $providers = message_get_providers_for_user($teacher->id);
@@ -188,6 +188,11 @@ class core_messagelib_testcase extends advanced_testcase {
         $email = reset($emails);
         $this->assertTrue(strpos($email->body, 'Content-Disposition: attachment;') !== false);
         $this->assertTrue(strpos($email->body, 'emailtest.txt') !== false);
+
+        // Check if the stored file still exists after remove the temporary attachment.
+        $storedfileexists = $fs->file_exists($filerecord['contextid'], $filerecord['component'], $filerecord['filearea'],
+                                             $filerecord['itemid'], $filerecord['filepath'], $filerecord['filename']);
+        $this->assertTrue($storedfileexists);
     }
 
     /**

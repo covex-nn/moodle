@@ -91,6 +91,8 @@ abstract class moodle_database {
     protected $reads = 0;
     /** @var int The database writes (performance counter).*/
     protected $writes = 0;
+    /** @var float Time queries took to finish, seconds with microseconds.*/
+    protected $queriestime = 0;
 
     /** @var int Debug level. */
     protected $debug  = 0;
@@ -459,7 +461,10 @@ abstract class moodle_database {
         $logerrors = !empty($this->dboptions['logerrors']);
         $iserror   = ($error !== false);
 
-        $time = microtime(true) - $this->last_time;
+        $time = $this->query_time();
+
+        // Will be shown or not depending on MDL_PERF values rather than in dboptions['log*].
+        $this->queriestime = $this->queriestime + $time;
 
         if ($logall or ($logslow and ($logslow < ($time+0.00001))) or ($iserror and $logerrors)) {
             $this->loggingquery = true;
@@ -487,6 +492,14 @@ abstract class moodle_database {
             }
             $this->loggingquery = false;
         }
+    }
+
+    /**
+     * Returns the time elapsed since the query started.
+     * @return float Seconds with microseconds
+     */
+    protected function query_time() {
+        return microtime(true) - $this->last_time;
     }
 
     /**
@@ -543,7 +556,7 @@ abstract class moodle_database {
         if (!$this->get_debug()) {
             return;
         }
-        $time = microtime(true) - $this->last_time;
+        $time = $this->query_time();
         $message = "Query took: {$time} seconds.\n";
         if (CLI_SCRIPT) {
             echo $message;
@@ -2173,6 +2186,15 @@ abstract class moodle_database {
     }
 
     /**
+     * Analyze the data in temporary tables to force statistics collection after bulk data loads.
+     *
+     * @return void
+     */
+    public function update_temp_table_stats() {
+        $this->temptables->update_stats();
+    }
+
+    /**
      * Checks and returns true if transactions are supported.
      *
      * It is not responsible to run productions servers
@@ -2356,6 +2378,8 @@ abstract class moodle_database {
         // now enable transactions again
         $this->transactions = array();
         $this->force_rollback = false;
+
+        \core\event\manager::database_transaction_rolledback();
     }
 
     /**
@@ -2408,5 +2432,13 @@ abstract class moodle_database {
      */
     public function perf_get_queries() {
         return $this->writes + $this->reads;
+    }
+
+    /**
+     * Time waiting for the database engine to finish running all queries.
+     * @return float Number of seconds with microseconds
+     */
+    public function perf_get_queries_time() {
+        return $this->queriestime;
     }
 }

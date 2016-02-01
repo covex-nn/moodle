@@ -1030,9 +1030,11 @@ function get_file_argument() {
 
     // Then try extract file from the slasharguments.
     if (stripos($_SERVER['SERVER_SOFTWARE'], 'iis') !== false) {
-        // NOTE: ISS tends to convert all file paths to single byte DOS encoding,
+        // NOTE: IIS tends to convert all file paths to single byte DOS encoding,
         //       we can not use other methods because they break unicode chars,
-        //       the only way is to use URL rewriting.
+        //       the only ways are to use URL rewriting
+        //       OR
+        //       to properly set the 'FastCGIUtf8ServerVariables' registry key.
         if (isset($_SERVER['PATH_INFO']) and $_SERVER['PATH_INFO'] !== '') {
             // Check that PATH_INFO works == must not contain the script name.
             if (strpos($_SERVER['PATH_INFO'], $SCRIPT) === false) {
@@ -1524,6 +1526,25 @@ function format_module_intro($module, $activity, $cmid, $filter=true) {
 }
 
 /**
+ * Removes the usage of Moodle files from a text.
+ *
+ * In some rare cases we need to re-use a text that already has embedded links
+ * to some files hosted within Moodle. But the new area in which we will push
+ * this content does not support files... therefore we need to remove those files.
+ *
+ * @param string $source The text
+ * @return string The stripped text
+ */
+function strip_pluginfile_content($source) {
+    $baseurl = '@@PLUGINFILE@@';
+    // Looking for something like < .* "@@pluginfile@@.*" .* >
+    $pattern = '$<[^<>]+["\']' . $baseurl . '[^"\']*["\'][^<>]*>$';
+    $stripped = preg_replace($pattern, '', $source);
+    // Use purify html to rebalence potentially mismatched tags and generally cleanup.
+    return purify_html($stripped);
+}
+
+/**
  * Legacy function, used for cleaning of old forum and glossary text only.
  *
  * @param string $text text that may contain legacy TRUSTTEXT marker
@@ -1917,24 +1938,23 @@ function highlight($needle, $haystack, $matchcase = false,
         return $haystack;
     }
 
-    // Find all the HTML tags in the input, and store them in a placeholders array..
-    $placeholders = array();
-    $matches = array();
-    preg_match_all('/<[^>]*>/', $haystack, $matches);
-    foreach (array_unique($matches[0]) as $key => $htmltag) {
-        $placeholders['<|' . $key . '|>'] = $htmltag;
+    // Split the string into HTML tags and real content.
+    $chunks = preg_split('/((?:<[^>]*>)+)/', $haystack, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+    // We have an array of alternating blocks of text, then HTML tags, then text, ...
+    // Loop through replacing search terms in the text, and leaving the HTML unchanged.
+    $ishtmlchunk = false;
+    $result = '';
+    foreach ($chunks as $chunk) {
+        if ($ishtmlchunk) {
+            $result .= $chunk;
+        } else {
+            $result .= preg_replace($regexp, $prefix . '$1' . $suffix, $chunk);
+        }
+        $ishtmlchunk = !$ishtmlchunk;
     }
 
-    // In $hastack, replace each HTML tag with the corresponding placeholder.
-    $haystack = str_replace($placeholders, array_keys($placeholders), $haystack);
-
-    // In the resulting string, Do the highlighting.
-    $haystack = preg_replace($regexp, $prefix . '$1' . $suffix, $haystack);
-
-    // Turn the placeholders back into HTML tags.
-    $haystack = str_replace(array_keys($placeholders), $placeholders, $haystack);
-
-    return $haystack;
+    return $result;
 }
 
 /**
@@ -2034,13 +2054,13 @@ function send_headers($contenttype, $cacheable = true) {
 
     if ($cacheable) {
         // Allow caching on "back" (but not on normal clicks).
-        @header('Cache-Control: private, pre-check=0, post-check=0, max-age=0');
+        @header('Cache-Control: private, pre-check=0, post-check=0, max-age=0, no-transform');
         @header('Pragma: no-cache');
         @header('Expires: ');
     } else {
         // Do everything we can to always prevent clients and proxies caching.
         @header('Cache-Control: no-store, no-cache, must-revalidate');
-        @header('Cache-Control: post-check=0, pre-check=0', false);
+        @header('Cache-Control: post-check=0, pre-check=0, no-transform', false);
         @header('Pragma: no-cache');
         @header('Expires: Mon, 20 Aug 1969 09:23:00 GMT');
         @header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
@@ -2550,6 +2570,7 @@ function redirect($url, $message='', $delay=-1) {
     if ($PAGE) {
         $PAGE->set_context(null);
         $PAGE->set_pagelayout('redirect');  // No header and footer needed.
+        $PAGE->set_title(get_string('pageshouldredirect', 'moodle'));
     }
 
     if ($url instanceof moodle_url) {
@@ -2900,7 +2921,7 @@ function debugging($message = '', $level = DEBUG_NORMAL, $backtrace = null) {
         if (!$backtrace) {
             $backtrace = debug_backtrace();
         }
-        $from = format_backtrace($backtrace, CLI_SCRIPT);
+        $from = format_backtrace($backtrace, CLI_SCRIPT || NO_DEBUG_DISPLAY);
         if (PHPUNIT_TEST) {
             if (phpunit_util::debugging_triggered($message, $level, $from)) {
                 // We are inside test, the debug message was logged.
@@ -2911,7 +2932,7 @@ function debugging($message = '', $level = DEBUG_NORMAL, $backtrace = null) {
         if (NO_DEBUG_DISPLAY) {
             // Script does not want any errors or debugging in output,
             // we send the info to error log instead.
-            error_log('Debugging: ' . $message . $from);
+            error_log('Debugging: ' . $message . ' in '. PHP_EOL . $from);
 
         } else if ($forcedebug or $CFG->debugdisplay) {
             if (!defined('DEBUGGING_PRINTED')) {

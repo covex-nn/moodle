@@ -102,6 +102,11 @@ class dndupload_handler {
     protected $filehandlers = array();
 
     /**
+     * @var context_course|null
+     */
+    protected $context = null;
+
+    /**
      * Gather a list of dndupload handlers from the different mods
      *
      * @param object $course The course this is being added to (to check course_allowed_module() )
@@ -118,6 +123,8 @@ class dndupload_handler {
                         get_string('nameforpage', 'moodle'), get_string('whatforpage', 'moodle'), 20);
         $this->register_type('text', array('text', 'text/plain'), get_string('addpagehere', 'moodle'),
                         get_string('nameforpage', 'moodle'), get_string('whatforpage', 'moodle'), 30);
+
+        $this->context = context_course::instance($course->id);
 
         // Loop through all modules to find handlers.
         $mods = get_plugin_list_with_function('mod', 'dndupload_register');
@@ -383,7 +390,7 @@ class dndupload_handler {
         }
 
         $ret->filehandlers = $this->filehandlers;
-        $uploadrepo = repository::get_instances(array('type' => 'upload'));
+        $uploadrepo = repository::get_instances(array('type' => 'upload', 'currentcontext' => $this->context));
         if (empty($uploadrepo)) {
             $ret->filehandlers = array(); // No upload repo => no file handlers.
         }
@@ -529,7 +536,7 @@ class dndupload_ajax_processor {
         $draftitemid = file_get_unused_draft_itemid();
         $maxbytes = get_max_upload_file_size($CFG->maxbytes, $this->course->maxbytes);
         $types = $this->dnduploadhandler->get_handled_file_types($this->module->name);
-        $repo = repository::get_instances(array('type' => 'upload'));
+        $repo = repository::get_instances(array('type' => 'upload', 'currentcontext' => $this->context));
         if (empty($repo)) {
             throw new moodle_exception('errornouploadrepo', 'moodle');
         }
@@ -696,16 +703,7 @@ class dndupload_ajax_processor {
         $mod = $info->get_cm($this->cm->id);
 
         // Trigger course module created event.
-        $event = \core\event\course_module_created::create(array(
-            'courseid' => $this->course->id,
-            'context'  => context_module::instance($mod->id),
-            'objectid' => $mod->id,
-            'other'    => array(
-                'modulename' => $mod->modname,
-                'name'       => $mod->name,
-                'instanceid' => $instanceid
-            )
-        ));
+        $event = \core\event\course_module_created::create_from_cm($mod);
         $event->trigger();
 
         add_to_log($this->course->id, $mod->modname, "add",
@@ -722,29 +720,18 @@ class dndupload_ajax_processor {
      */
     protected function send_response($mod) {
         global $OUTPUT, $PAGE;
-        $courserenderer = $PAGE->get_renderer('core', 'course');
 
         $resp = new stdClass();
         $resp->error = self::ERROR_OK;
-        $resp->icon = $mod->get_icon_url()->out();
-        $resp->name = $mod->name;
-        if ($mod->has_view()) {
-            $resp->link = $mod->get_url()->out();
-        } else {
-            $resp->link = null;
-        }
-        $resp->content = $mod->get_content();
-        $resp->elementid = 'module-'.$mod->id;
-        $actions = course_get_cm_edit_actions($mod, 0, $mod->sectionnum);
-        $resp->commands = ' '. $courserenderer->course_section_cm_edit_actions($actions, $mod);
-        $resp->onclick = $mod->get_on_click();
-        $resp->visible = $mod->visible;
+        $resp->elementid = 'module-' . $mod->id;
 
-        // If using groupings, then display grouping name.
-        if (!empty($mod->groupingid) && has_capability('moodle/course:managegroups', $this->context)) {
-            $groupings = groups_get_all_groupings($this->course->id);
-            $resp->groupingname = format_string($groupings[$mod->groupingid]->name);
-        }
+        $courserenderer = $PAGE->get_renderer('core', 'course');
+        $completioninfo = new completion_info($this->course);
+        $info = get_fast_modinfo($this->course);
+        $sr = null;
+        $modulehtml = $courserenderer->course_section_cm($this->course, $completioninfo,
+                $mod, null, array());
+        $resp->fullcontent = $courserenderer->course_section_cm_list_item($this->course, $completioninfo, $mod, $sr);
 
         echo $OUTPUT->header();
         echo json_encode($resp);

@@ -451,6 +451,101 @@ class core_event_testcase extends advanced_testcase {
             \core_tests\event\unittest_observer::$info);
     }
 
+    public function test_rollback() {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        $observers = array(
+            array(
+                'eventname'   => '\core_tests\event\unittest_executed',
+                'callback'    => '\core_tests\event\unittest_observer::external_observer',
+                'internal'    => 0,
+            ),
+        );
+
+        \core\event\manager::phpunit_replace_observers($observers);
+        \core_tests\event\unittest_observer::reset();
+
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(1, \core_tests\event\unittest_observer::$event);
+        \core_tests\event\unittest_observer::reset();
+
+        $transaction1 = $DB->start_delegated_transaction();
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $transaction2 = $DB->start_delegated_transaction();
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        try {
+            $transaction2->rollback(new Exception('x'));
+            $this->fail('Expecting exception');
+        } catch (Exception $e) {}
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $this->assertTrue($DB->is_transaction_started());
+
+        try {
+            $transaction1->rollback(new Exception('x'));
+            $this->fail('Expecting exception');
+        } catch (Exception $e) {}
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $this->assertFalse($DB->is_transaction_started());
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(1, \core_tests\event\unittest_observer::$event);
+    }
+
+    public function test_forced_rollback() {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        $observers = array(
+            array(
+                'eventname'   => '\core_tests\event\unittest_executed',
+                'callback'    => '\core_tests\event\unittest_observer::external_observer',
+                'internal'    => 0,
+            ),
+        );
+
+        \core\event\manager::phpunit_replace_observers($observers);
+        \core_tests\event\unittest_observer::reset();
+
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(1, \core_tests\event\unittest_observer::$event);
+        \core_tests\event\unittest_observer::reset();
+
+        $transaction1 = $DB->start_delegated_transaction();
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $transaction2 = $DB->start_delegated_transaction();
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $DB->force_transaction_rollback();
+        $this->assertCount(0, \core_tests\event\unittest_observer::$event);
+
+        $this->assertFalse($DB->is_transaction_started());
+
+        \core_tests\event\unittest_executed::create(array('context'=>\context_system::instance(), 'other'=>array('sample'=>1, 'xx'=>10)))->trigger();
+        $this->assertCount(1, \core_tests\event\unittest_observer::$event);
+    }
+
     public function test_legacy() {
         global $DB;
 
@@ -731,5 +826,54 @@ class core_event_testcase extends advanced_testcase {
         }
 
         $this->assertSame($event->get_data(), $data);
+    }
+
+    public function test_user_profile_viewed() {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $user = $this->getDataGenerator()->create_user();
+        $course = $this->getDataGenerator()->create_course();
+        $coursecontext = context_course::instance($course->id);
+
+        // User profile viewed in course context.
+        $eventparams = array(
+            'objectid' => $user->id,
+            'relateduserid' => $user->id,
+            'courseid' => $course->id,
+            'context' => $coursecontext,
+            'other' => array(
+                'courseid' => $course->id,
+                'courseshortname' => $course->shortname,
+                'coursefullname' => $course->fullname
+            )
+        );
+        $event = \core\event\user_profile_viewed::create($eventparams);
+
+        // Trigger and capture the event.
+        $sink = $this->redirectEvents();
+        $event->trigger();
+        $events = $sink->get_events();
+        $event = reset($events);
+
+        $this->assertInstanceOf('\core\event\user_profile_viewed', $event);
+        $log = array($course->id, 'user', 'view', 'view.php?id=' . $user->id . '&course=' . $course->id, $user->id);
+        $this->assertEventLegacyLogData($log, $event);
+
+        // User profile viewed in user context.
+        $usercontext = context_user::instance($user->id);
+        $eventparams['context'] = $usercontext;
+        unset($eventparams['courseid'], $eventparams['other']);
+        $event = \core\event\user_profile_viewed::create($eventparams);
+
+        // Trigger and capture the event.
+        $sink = $this->redirectEvents();
+        $event->trigger();
+        $events = $sink->get_events();
+        $event = reset($events);
+
+        $this->assertInstanceOf('\core\event\user_profile_viewed', $event);
+        $expected = null;
+        $this->assertEventLegacyLogData($expected, $event);
     }
 }

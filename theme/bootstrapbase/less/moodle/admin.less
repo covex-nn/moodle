@@ -472,11 +472,6 @@ img.iconsmall {
     margin-left: 0.5em;
 }
 
-#admin-devicedetectregex table {
-    border: none;
-    // Override a table border=1 in the HTML.
-}
-
 #admin-emoticons td input {
     width: 8em;
 }
@@ -764,8 +759,8 @@ img.iconsmall {
     padding-bottom: 0;
 }
 
-// Hacks for badly marked up admin warnings.
-#page-admin-roles-assign div.box.generalbox {
-    .alert;
-    .alert-danger;
+#adminsettings .form-overridden {
+    color: @infoText;
+    background-color: @infoBackground;
 }
+

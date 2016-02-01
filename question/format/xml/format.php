@@ -169,11 +169,13 @@ class qformat_xml extends qformat_default {
         }
         $fs = get_file_storage();
         $itemid = file_get_unused_draft_itemid();
-        $filenames = array();
+        $filepaths = array();
         foreach ($xml as $file) {
-            $filename = $file['@']['name'];
-            if (in_array($filename, $filenames)) {
-                debugging('Duplicate file in XML: ' . $filename, DEBUG_DEVELOPER);
+            $filename = $this->getpath($file, array('@', 'name'), '', true);
+            $filepath = $this->getpath($file, array('@', 'path'), '/', true);
+            $fullpath = $filepath . $filename;
+            if (in_array($fullpath, $filepaths)) {
+                debugging('Duplicate file in XML: ' . $fullpath, DEBUG_DEVELOPER);
                 continue;
             }
             $filerecord = array(
@@ -181,11 +183,11 @@ class qformat_xml extends qformat_default {
                 'component' => 'user',
                 'filearea'  => 'draft',
                 'itemid'    => $itemid,
-                'filepath'  => '/',
+                'filepath'  => $filepath,
                 'filename'  => $filename,
             );
             $fs->create_file_from_string($filerecord, base64_decode($file['#']));
-            $filenames[] = $filename;
+            $filepaths[] = $fullpath;
         }
         return $itemid;
     }
@@ -773,7 +775,7 @@ class qformat_xml extends qformat_default {
 
         // Get answers array.
         $answers = $question['#']['answer'];
-        $qo->answers = array();
+        $qo->answer = array();
         $qo->feedback = array();
         $qo->fraction = array();
         $qo->tolerance = array();
@@ -787,7 +789,7 @@ class qformat_xml extends qformat_default {
             if (empty($ans->answer['text'])) {
                 $ans->answer['text'] = '*';
             }
-            $qo->answers[] = $ans->answer;
+            $qo->answer[] = $ans->answer['text'];
             $qo->feedback[] = $ans->feedback;
             $qo->tolerance[] = $answer['#']['tolerance'][0]['#'];
             // Fraction as a tag is deprecated.
@@ -850,9 +852,10 @@ class qformat_xml extends qformat_default {
             $qo->dataset[$qo->datasetindex]->itemcount = $dataset['#']['itemcount'][0]['#'];
             $qo->dataset[$qo->datasetindex]->datasetitem = array();
             $qo->dataset[$qo->datasetindex]->itemindex = 0;
-            $qo->dataset[$qo->datasetindex]->number_of_items =
-                    $dataset['#']['number_of_items'][0]['#'];
-            $datasetitems = $dataset['#']['dataset_items'][0]['#']['dataset_item'];
+            $qo->dataset[$qo->datasetindex]->number_of_items = $this->getpath($dataset,
+                    array('#', 'number_of_items', 0, '#'), 0);
+            $datasetitems = $this->getpath($dataset,
+                    array('#', 'dataset_items', 0, '#', 'dataset_item'), array());
             foreach ($datasetitems as $datasetitem) {
                 $qo->dataset[$qo->datasetindex]->itemindex++;
                 $qo->dataset[$qo->datasetindex]->datasetitem[
@@ -1088,9 +1091,9 @@ class qformat_xml extends qformat_default {
             if ($file->is_directory()) {
                 continue;
             }
-            $string .= '<file name="' . $file->get_filename() . '" encoding="base64">';
+            $string .= '<file name="' . $file->get_filename() . '" path="' . $file->get_filepath() . '" encoding="base64">';
             $string .= base64_encode($file->get_content());
-            $string .= '</file>';
+            $string .= "</file>\n";
         }
         return $string;
     }
@@ -1266,7 +1269,7 @@ class qformat_xml extends qformat_default {
 
             case 'multianswer':
                 foreach ($question->options->questions as $index => $subq) {
-                    $expout = preg_replace('~{#' . $index . '}~', $subq->questiontext, $expout);
+                    $expout = str_replace('{#' . $index . '}', $subq->questiontext, $expout);
                 }
                 break;
 

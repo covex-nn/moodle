@@ -273,10 +273,12 @@ TREE.prototype = {
             M.block_navigation.expandablebranchcount++;
             this.branches[siteadminbranch.get('id')] = siteadminbranch;
             // Remove link on site admin with JS to keep old UI.
-            var siteadminlinknode = siteadminbranch.node.get('childNodes').item(0);
-            if (siteadminlinknode) {
-                var siteadminnode = Y.Node.create('<span tabindex="0">'+siteadminlinknode.get('innerHTML')+'</span>');
-                siteadminbranch.node.replaceChild(siteadminnode, siteadminlinknode);
+            if (siteadminbranch.node) {
+                var siteadminlinknode = siteadminbranch.node.get('childNodes').item(0);
+                if (siteadminlinknode) {
+                    var siteadminnode = Y.Node.create('<span tabindex="0">'+siteadminlinknode.get('innerHTML')+'</span>');
+                    siteadminbranch.node.replaceChild(siteadminnode, siteadminlinknode);
+                }
             }
         }
         if (M.block_navigation.expandablebranchcount > 0) {
@@ -648,7 +650,7 @@ BRANCH.prototype = {
         try {
             var object = Y.JSON.parse(outcome.responseText);
             if (object.error) {
-                Y.use('moodle-core-notification-ajaxException', function () {
+                Y.use('moodle-core-notification-ajaxexception', function () {
                     return new M.core.ajaxException(object).show();
                 });
                 return false;

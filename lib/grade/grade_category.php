@@ -564,6 +564,7 @@ class grade_category extends grade_object {
             $grade->finalgrade = null;
 
             if (!is_null($oldfinalgrade)) {
+                $grade->timemodified = time();
                 $grade->update('aggregation');
             }
             return;
@@ -606,21 +607,24 @@ class grade_category extends grade_object {
             $grade->finalgrade = null;
 
             if (!is_null($oldfinalgrade)) {
+                $grade->timemodified = time();
                 $grade->update('aggregation');
             }
             return;
         }
 
         // do the maths
-        $agg_grade = $this->aggregate_values($grade_values, $items);
+        $result = $this->aggregate_values_and_adjust_bounds($grade_values, $items);
+        $agg_grade = $result['grade'];
 
         // recalculate the grade back to requested range
-        $finalgrade = grade_grade::standardise_score($agg_grade, 0, 1, $this->grade_item->grademin, $this->grade_item->grademax);
+        $finalgrade = grade_grade::standardise_score($agg_grade, 0, 1, $result['grademin'], $result['grademax']);
 
         $grade->finalgrade = $this->grade_item->bounded_grade($finalgrade);
 
         // update in db if changed
         if (grade_floats_different($grade->finalgrade, $oldfinalgrade)) {
+            $grade->timemodified = time();
             $grade->update('aggregation');
         }
 
@@ -628,15 +632,23 @@ class grade_category extends grade_object {
     }
 
     /**
-     * Internal function that calculates the aggregated grade for this grade category
+     * Internal function that calculates the aggregated grade and new min/max for this grade category
      *
      * Must be public as it is used by grade_grade::get_hiding_affected()
      *
      * @param array $grade_values An array of values to be aggregated
      * @param array $items The array of grade_items
-     * @return float The aggregate grade for this grade category
+     * @since Moodle 2.6.5, 2.7.2
+     * @return array containing values for:
+     *                'grade' => the new calculated grade
+     *                'grademin' => the new calculated min grade for the category
+     *                'grademax' => the new calculated max grade for the category
      */
-    public function aggregate_values($grade_values, $items) {
+    public function aggregate_values_and_adjust_bounds($grade_values, $items) {
+        $category_item = $this->get_grade_item();
+        $grademin = $category_item->grademin;
+        $grademax = $category_item->grademax;
+
         switch ($this->aggregation) {
 
             case GRADE_AGGREGATE_MEDIAN: // Middle point value in the set: ignores frequencies
@@ -752,6 +764,23 @@ class grade_category extends grade_object {
                 }
                 break;
 
+            case GRADE_AGGREGATE_SUM:    // Add up all the items.
+                $num = count($grade_values);
+                // Excluded items can affect the grademax for this grade_item.
+                $grademin = 0;
+                $grademax = 0;
+                $sum = 0;
+                foreach ($grade_values as $itemid => $grade_value) {
+                    $sum += $grade_value * ($items[$itemid]->grademax - $items[$itemid]->grademin);
+                    if ($items[$itemid]->aggregationcoef == 0) {
+                        $grademin += $items[$itemid]->grademin;
+                        $grademax += $items[$itemid]->grademax;
+                    }
+                }
+
+                $agg_grade = $sum / ($grademax - $grademin);
+                break;
+
             case GRADE_AGGREGATE_MEAN:    // Arithmetic average of all grade items (if ungraded aggregated, NULL counted as minimum)
             default:
                 $num = count($grade_values);
@@ -760,7 +789,22 @@ class grade_category extends grade_object {
                 break;
         }
 
-        return $agg_grade;
+        return array('grade' => $agg_grade, 'grademin' => $grademin, 'grademax' => $grademax);
+    }
+
+    /**
+     * Internal function that calculates the aggregated grade for this grade category
+     *
+     * Must be public as it is used by grade_grade::get_hiding_affected()
+     *
+     * Will be deprecated in Moodle 2.8
+     * @param array $grade_values An array of values to be aggregated
+     * @param array $items The array of grade_items
+     * @return float The aggregate grade for this grade category
+     */
+    public function aggregate_values($grade_values, $items) {
+        $result = $this->aggregate_values_and_adjust_bounds($grade_values, $items);
+        return $result['grade'];
     }
 
     /**
@@ -858,6 +902,7 @@ class grade_category extends grade_object {
 
         // update in db if changed
         if (grade_floats_different($grade->finalgrade, $oldfinalgrade)) {
+            $grade->timemodified = time();
             $grade->update('aggregation');
         }
 
@@ -967,10 +1012,20 @@ class grade_category extends grade_object {
      *
      * @return bool True if extra credit used
      */
-    function is_extracredit_used() {
-        return ($this->aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN2
-             or $this->aggregation == GRADE_AGGREGATE_EXTRACREDIT_MEAN
-             or $this->aggregation == GRADE_AGGREGATE_SUM);
+    public function is_extracredit_used() {
+        return self::aggregation_uses_extracredit($this->aggregation);
+    }
+
+    /**
+     * Returns true if aggregation passed is using extracredit.
+     *
+     * @param int $aggregation Aggregation const.
+     * @return bool True if extra credit used
+     */
+    public static function aggregation_uses_extracredit($aggregation) {
+        return ($aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN2
+             or $aggregation == GRADE_AGGREGATE_EXTRACREDIT_MEAN
+             or $aggregation == GRADE_AGGREGATE_SUM);
     }
 
     /**
@@ -979,10 +1034,21 @@ class grade_category extends grade_object {
      * @return bool True if an aggregation coefficient is being used
      */
     public function is_aggregationcoef_used() {
-        return ($this->aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN
-             or $this->aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN2
-             or $this->aggregation == GRADE_AGGREGATE_EXTRACREDIT_MEAN
-             or $this->aggregation == GRADE_AGGREGATE_SUM);
+        return self::aggregation_uses_aggregationcoef($this->aggregation);
+
+    }
+
+    /**
+     * Returns true if aggregation uses aggregationcoef
+     *
+     * @param int $aggregation Aggregation const.
+     * @return bool True if an aggregation coefficient is being used
+     */
+    public static function aggregation_uses_aggregationcoef($aggregation) {
+        return ($aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN
+             or $aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN2
+             or $aggregation == GRADE_AGGREGATE_EXTRACREDIT_MEAN
+             or $aggregation == GRADE_AGGREGATE_SUM);
 
     }
 
@@ -1573,14 +1639,14 @@ class grade_category extends grade_object {
 
             //weight and extra credit share a column :( Would like a default of 1 for weight and 0 for extra credit
             //Flip from the default of 0 to 1 (or vice versa) if ALL items in the category are still set to the old default.
-            if ($params->aggregation==GRADE_AGGREGATE_WEIGHTED_MEAN || $params->aggregation==GRADE_AGGREGATE_EXTRACREDIT_MEAN) {
+            if (self::aggregation_uses_aggregationcoef($params->aggregation)) {
                 $sql = $defaultaggregationcoef = null;
 
-                if ($params->aggregation==GRADE_AGGREGATE_WEIGHTED_MEAN) {
+                if (!self::aggregation_uses_extracredit($params->aggregation)) {
                     //if all items in this category have aggregation coefficient of 0 we can change it to 1 ie evenly weighted
                     $sql = "select count(id) from {grade_items} where categoryid=:categoryid and aggregationcoef!=0";
                     $defaultaggregationcoef = 1;
-                } else if ($params->aggregation==GRADE_AGGREGATE_EXTRACREDIT_MEAN) {
+                } else {
                     //if all items in this category have aggregation coefficient of 1 we can change it to 0 ie no extra credit
                     $sql = "select count(id) from {grade_items} where categoryid=:categoryid and aggregationcoef!=1";
                     $defaultaggregationcoef = 0;

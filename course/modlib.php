@@ -85,6 +85,9 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
         $newcm->showdescription = 0;
     }
 
+    // From this point we make database changes, so start transaction.
+    $transaction = $DB->start_delegated_transaction();
+
     if (!$moduleinfo->coursemodule = add_course_module($newcm)) {
         print_error('cannotaddcoursemodule');
     }
@@ -98,14 +101,21 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
     }
 
     $addinstancefunction    = $moduleinfo->modulename."_add_instance";
-    $returnfromfunc = $addinstancefunction($moduleinfo, $mform);
+    try {
+        $returnfromfunc = $addinstancefunction($moduleinfo, $mform);
+    } catch (moodle_exception $e) {
+        $returnfromfunc = $e;
+    }
     if (!$returnfromfunc or !is_number($returnfromfunc)) {
-        // Undo everything we can.
+        // Undo everything we can. This is not necessary for databases which
+        // support transactions, but improves consistency for other databases.
         $modcontext = context_module::instance($moduleinfo->coursemodule);
         context_helper::delete_instance(CONTEXT_MODULE, $moduleinfo->coursemodule);
         $DB->delete_records('course_modules', array('id'=>$moduleinfo->coursemodule));
 
-        if (!is_number($returnfromfunc)) {
+        if ($e instanceof moodle_exception) {
+            throw $e;
+        } else if (!is_number($returnfromfunc)) {
             print_error('invalidfunction', '', course_get_url($course, $moduleinfo->section));
         } else {
             print_error('cannotaddnewmodule', '', course_get_url($course, $moduleinfo->section), $moduleinfo->modulename);
@@ -135,16 +145,11 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
     }
 
     // Trigger event based on the action we did.
-    $event = \core\event\course_module_created::create(array(
-         'courseid' => $course->id,
-         'context'  => $modcontext,
-         'objectid' => $moduleinfo->coursemodule,
-         'other'    => array(
-             'modulename' => $moduleinfo->modulename,
-             'name'       => $moduleinfo->name,
-             'instanceid' => $moduleinfo->instance
-         )
-    ));
+    // Api create_from_cm expects modname and id property, and we don't want to modify $moduleinfo since we are returning it.
+    $eventdata = clone $moduleinfo;
+    $eventdata->modname = $eventdata->modulename;
+    $eventdata->id = $eventdata->coursemodule;
+    $event = \core\event\course_module_created::create_from_cm($eventdata, $modcontext);
     $event->trigger();
 
     add_to_log($course->id, $moduleinfo->modulename, "add",
@@ -152,6 +157,7 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
                "$moduleinfo->instance", $moduleinfo->coursemodule);
 
     $moduleinfo = edit_module_post_actions($moduleinfo, $course);
+    $transaction->allow_commit();
 
     return $moduleinfo;
 }
@@ -169,6 +175,7 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
  */
 function edit_module_post_actions($moduleinfo, $course) {
     global $CFG;
+    require_once($CFG->libdir.'/gradelib.php');
 
     $modcontext = context_module::instance($moduleinfo->coursemodule);
     $hasgrades = plugin_supports('mod', $moduleinfo->modulename, FEATURE_GRADE_HAS_GRADE, false);
@@ -203,11 +210,22 @@ function edit_module_post_actions($moduleinfo, $course) {
             }
             $moduleinfo->gradecat = $grade_category->id;
         }
+        $gradecategory = $grade_item->get_parent_category();
         foreach ($items as $itemid=>$unused) {
             $items[$itemid]->set_parent($moduleinfo->gradecat);
             if ($itemid == $grade_item->id) {
                 // Use updated grade_item.
                 $grade_item = $items[$itemid];
+            }
+            if (!empty($moduleinfo->add)) {
+                if (grade_category::aggregation_uses_aggregationcoef($gradecategory->aggregation)) {
+                    if ($gradecategory->aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN) {
+                        $grade_item->aggregationcoef = 1;
+                    } else {
+                        $grade_item->aggregationcoef = 0;
+                    }
+                    $grade_item->update();
+                }
             }
         }
     }
@@ -265,6 +283,17 @@ function edit_module_post_actions($moduleinfo, $course) {
 
                 } else if (isset($moduleinfo->gradecat)) {
                     $outcome_item->set_parent($moduleinfo->gradecat);
+                }
+                $gradecategory = $outcome_item->get_parent_category();
+                if ($outcomeexists == false) {
+                    if (grade_category::aggregation_uses_aggregationcoef($gradecategory->aggregation)) {
+                        if ($gradecategory->aggregation == GRADE_AGGREGATE_WEIGHTED_MEAN) {
+                            $outcome_item->aggregationcoef = 1;
+                        } else {
+                            $outcome_item->aggregationcoef = 0;
+                        }
+                        $outcome_item->update();
+                    }
                 }
             }
         }
@@ -494,19 +523,8 @@ function update_moduleinfo($cm, $moduleinfo, $course, $mform = null) {
     if ($completion->is_enabled() && !empty($moduleinfo->completionunlocked)) {
         $completion->reset_all_state($cm);
     }
-
-    // Trigger event based on the action we did.
-    $event = \core\event\course_module_updated::create(array(
-        'courseid' => $course->id,
-        'context'  => $modcontext,
-        'objectid' => $moduleinfo->coursemodule,
-        'other'    => array(
-            'modulename' => $moduleinfo->modulename,
-            'name'       => $moduleinfo->name,
-            'instanceid' => $moduleinfo->instance
-        )
-    ));
-    $event->trigger();
+    $cm->name = $moduleinfo->name;
+    \core\event\course_module_updated::create_from_cm($cm, $modcontext)->trigger();
 
     add_to_log($course->id, $moduleinfo->modulename, "update",
                "view.php?id=$moduleinfo->coursemodule",

@@ -129,7 +129,7 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('404', $response->status);
         $this->assertTrue(is_array($response->headers));
         $this->assertRegExp('|^HTTP/1\.[01] 404 Not Found$|', rtrim($response->response_code));
-        $this->assertStringStartsWith('<!DOCTYPE', $response->results);
+        // Do not test the response starts with DOCTYPE here because some servers may return different headers.
         $this->assertSame('', $response->error);
 
         // Invalid url.
@@ -241,10 +241,20 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame(2, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
+        // This test was failing for people behind Squid proxies. Squid does not
+        // fully support HTTP 1.1, so converts things to HTTP 1.0, where the name
+        // of the status code is different.
+        reset($response);
+        if (key($response) === 'HTTP/1.0') {
+            $responsecode302 = '302 Moved Temporarily';
+        } else {
+            $responsecode302 = '302 Found';
+        }
+
         $curl = new curl();
         $contents = $curl->get("$testurl?redir=3", array(), array('CURLOPT_FOLLOWLOCATION'=>0));
         $response = $curl->getResponse();
-        $this->assertSame('302 Found', reset($response));
+        $this->assertSame($responsecode302, reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(302, $curl->info['http_code']);
         $this->assertSame('', $contents);
@@ -253,7 +263,7 @@ class core_filelib_testcase extends advanced_testcase {
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?redir=3", array(), array('CURLOPT_FOLLOWLOCATION'=>0));
         $response = $curl->getResponse();
-        $this->assertSame('302 Found', reset($response));
+        $this->assertSame($responsecode302, reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(302, $curl->info['http_code']);
         $this->assertSame('', $contents);
@@ -471,6 +481,29 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('OK', $contents);
     }
 
+    public function test_curl_file() {
+        $this->resetAfterTest();
+        $testurl = $this->getExternalTestFileUrl('/test_file.php');
+
+        $fs = get_file_storage();
+        $filerecord = array(
+            'contextid' => context_system::instance()->id,
+            'component' => 'test',
+            'filearea' => 'curl_post',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'test.txt'
+        );
+        $teststring = 'moodletest';
+        $testfile = $fs->create_file_from_string($filerecord, $teststring);
+
+        // Test post with file.
+        $data = array('testfile' => $testfile);
+        $curl = new curl();
+        $contents = $curl->post($testurl, $data);
+        $this->assertSame('OK', $contents);
+    }
+
     /**
      * Testing prepare draft area
      *
@@ -677,7 +710,7 @@ Connection: close
 HTTP/1.0 200 OK
 Server: Apache
 X-Lb-Nocache: true
-Cache-Control: private, max-age=15
+Cache-Control: private, max-age=15, no-transform
 ETag: "4d69af5d8ba873ea9192c489e151bd7b"
 Content-Type: text/html
 Date: Thu, 08 Dec 2011 14:44:53 GMT
@@ -693,7 +726,7 @@ EOF;
 HTTP/1.0 200 OK
 Server: Apache
 X-Lb-Nocache: true
-Cache-Control: private, max-age=15
+Cache-Control: private, max-age=15, no-transform
 ETag: "4d69af5d8ba873ea9192c489e151bd7b"
 Content-Type: text/html
 Date: Thu, 08 Dec 2011 14:44:53 GMT
