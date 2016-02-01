@@ -4,7 +4,7 @@
     "description": "Free web application that educators can use to create effective online learning sites",
     "license": "GPL-3.0+",
     "require": {
-        "covex-nn/moodle-installer": "~2.0"
+        "covex-nn/moodle-installer": "~3.0"
     },
     "extra": {
         "branch-alias": {
